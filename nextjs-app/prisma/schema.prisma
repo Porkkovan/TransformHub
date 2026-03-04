@@ -86,6 +86,7 @@ model Organization {
   contextEmbeddings     ContextEmbedding[]
   contextApplications   ContextApplication[]
   techTrends            TechTrend[]
+  externalIntegrations  ExternalIntegration[]
 
   @@map("organizations")
 }
@@ -586,6 +587,31 @@ model TechTrend {
   @@index([category])
   @@index([maturityLevel])
   @@map("tech_trends")
+}
+
+// ─── External Integrations ───────────────────────────────────────────────────
+
+model ExternalIntegration {
+  id             String    @id @default(cuid())
+  organizationId String    @map("organization_id")
+  name           String
+  type           String    // "jira" | "confluence" | "azure_devops" | "notion" | "servicenow"
+  baseUrl        String    @map("base_url")
+  username       String?
+  apiToken       String    @map("api_token")
+  projectKey     String?   @map("project_key")
+  status         String    @default("idle")  // "idle" | "syncing" | "synced" | "error"
+  lastSyncAt     DateTime? @map("last_sync_at")
+  syncedItems    Int       @default(0) @map("synced_items")
+  errorMessage   String?   @map("error_message")
+  metadata       Json?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("external_integrations")
 }
 
 model NotificationLog {

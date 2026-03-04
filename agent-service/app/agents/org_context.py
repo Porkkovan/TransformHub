@@ -66,23 +66,54 @@ def format_context_section(input_data: dict[str, Any], max_chars: int = 4000) ->
     # Context documents — top semantic search results from the Context Hub
     context_docs = input_data.get("contextDocuments", [])
     if context_docs:
-        doc_lines: list[str] = []
-        chars_used = 0
-        doc_budget = int(max_chars * 0.7)
-        for doc in context_docs:
-            content = doc.get("content", "").strip()
-            source = doc.get("source", doc.get("title", "document"))
-            if not content:
-                continue
-            snippet = f"[{source}]:\n{content}"
-            if chars_used + len(snippet) > doc_budget:
-                break
-            doc_lines.append(snippet)
-            chars_used += len(snippet)
-        if doc_lines:
-            sections.append(
-                "RELEVANT CONTEXT FROM UPLOADED DOCUMENTS:\n" + "\n\n".join(doc_lines)
-            )
+        # Surface integration docs first so external tool data is prominent
+        integration_docs = [d for d in context_docs if d.get("category") == "integration"]
+        non_integration_docs = [d for d in context_docs if d.get("category") != "integration"]
+
+        if integration_docs:
+            int_lines: list[str] = []
+            chars_used_int = 0
+            int_budget = int(max_chars * 0.4)
+            for doc in integration_docs[:5]:
+                metadata = doc.get("metadata") or {}
+                content = metadata.get("content", doc.get("content", "")).strip()
+                sub_cat = doc.get("subCategory", doc.get("sub_category", ""))
+                title = doc.get("title", doc.get("fileName", doc.get("file_name", "External Data")))
+                if not content:
+                    continue
+                snippet = f"### {title} ({sub_cat})\n{content[:1500]}"
+                if chars_used_int + len(snippet) > int_budget:
+                    break
+                int_lines.append(snippet)
+                chars_used_int += len(snippet)
+            if int_lines:
+                sections.append(
+                    "## External Integration Data\n"
+                    "The following data was imported from connected systems (Jira, Confluence, Azure DevOps, Notion, ServiceNow). "
+                    "Use this to inform current-state analysis and prioritise existing initiatives:\n\n"
+                    + "\n\n".join(int_lines)
+                )
+
+        if non_integration_docs:
+            doc_lines: list[str] = []
+            chars_used = 0
+            doc_budget = int(max_chars * 0.5)
+            for doc in non_integration_docs:
+                content = doc.get("content", "").strip()
+                source = doc.get("source", doc.get("title", "document"))
+                if not content:
+                    continue
+                snippet = f"[{source}]:\n{content}"
+                if chars_used + len(snippet) > doc_budget:
+                    break
+                doc_lines.append(snippet)
+                chars_used += len(snippet)
+            if doc_lines:
+                sections.append(
+                    "RELEVANT CONTEXT FROM UPLOADED DOCUMENTS:\n" + "\n\n".join(doc_lines)
+                )
+        elif not integration_docs:
+            pass  # no context docs at all
 
     # Application portfolio — apps registered in the Context Hub
     app_portfolio = input_data.get("applicationPortfolio", [])

@@ -11,6 +11,7 @@ import ApplicationTable from "@/components/context-hub/ApplicationTable";
 import CompetitorIntelligence from "@/components/context-hub/CompetitorIntelligence";
 import TechTrendsRadar from "@/components/context-hub/TechTrendsRadar";
 import ContextSearch from "@/components/context-hub/ContextSearch";
+import IntegrationsPanel from "@/components/context-hub/IntegrationsPanel";
 
 const tabs = [
   { id: "documents", label: "Documents" },
@@ -18,6 +19,7 @@ const tabs = [
   { id: "competitors", label: "Competitors" },
   { id: "trends", label: "Tech Trends" },
   { id: "search", label: "Search" },
+  { id: "integrations", label: "Integrations" },
 ] as const;
 
 type TabId = (typeof tabs)[number]["id"];
@@ -140,6 +142,9 @@ export default function ContextHubPage() {
       )}
       {activeTab === "search" && currentOrg && (
         <ContextSearch organizationId={currentOrg.id} />
+      )}
+      {activeTab === "integrations" && currentOrg && (
+        <IntegrationsPanel orgId={currentOrg.id} />
       )}
     </div>
   );

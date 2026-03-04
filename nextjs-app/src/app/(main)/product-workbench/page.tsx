@@ -16,6 +16,7 @@ import BusinessSegmentSelector from "@/components/shared/BusinessSegmentSelector
 import AgentOutputReviewPanel from "@/components/shared/AgentOutputReviewPanel";
 import { parseFunctionalityTiming, computeCapabilityRollup } from "@/lib/vsm-hierarchy";
 import { formatDuration } from "@/lib/format-duration";
+import ExportDropdown from "@/components/ui/ExportDropdown";
 
 // ── Compute a product-level readiness score from live VSM + capability data ──
 function computeReadiness(product: DigitalProduct) {
@@ -127,9 +128,17 @@ export default function ProductWorkbenchPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Product Workbench</h1>
-        <p className="text-white/50 mt-1">Current state analysis of digital products</p>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Product Workbench</h1>
+          <p className="text-white/50 mt-1">Current state analysis of digital products</p>
+        </div>
+        <ExportDropdown
+          endpoint="/api/export/workbench"
+          params={{ orgId: currentOrg?.id, productId: selectedProductId || undefined }}
+          label="Export"
+          disabled={!currentOrg?.id}
+        />
       </div>
 
       {/* Readiness Score Overview — computed from real product + VSM data */}

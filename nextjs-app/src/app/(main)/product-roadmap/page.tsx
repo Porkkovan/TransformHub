@@ -15,6 +15,7 @@ import { useAgentExecution } from "@/hooks/useAgentExecution";
 import { useProductRoadmap } from "@/hooks/useProductRoadmap";
 import { useDigitalProducts, DigitalProduct } from "@/hooks/useDigitalProducts";
 import { useOrganization } from "@/contexts/OrganizationContext";
+import ExportDropdown from "@/components/ui/ExportDropdown";
 
 type RoadmapTab = "capabilities" | "functionalities";
 type StrategyTab = "modernization" | "agentification";
@@ -158,6 +159,12 @@ export default function ProductRoadmapPage() {
           >
             {actionLoading || generateAgentLoading ? "Generating..." : "Generate from Future State"}
           </GlassButton>
+          <ExportDropdown
+            endpoint="/api/export/roadmap"
+            params={{ orgId: currentOrg?.id, productId: selectedProductId || undefined }}
+            label="Export"
+            disabled={!currentOrg?.id}
+          />
         </div>
       </div>
 

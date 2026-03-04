@@ -10,6 +10,7 @@ import CollapsibleSection from "@/components/ui/CollapsibleSection";
 import MermaidRenderer from "@/components/vsm/MermaidRenderer";
 import LeanVSMBoard, { LeanVSMStep } from "@/components/vsm/LeanVSMBoard";
 import InlineEditText from "@/components/ui/InlineEditText";
+import ExportDropdown from "@/components/ui/ExportDropdown";
 import AutomationBreakdownPanel from "@/components/future-state/AutomationBreakdownPanel";
 import ValueStreamComparisonPanel from "@/components/future-state/ValueStreamComparisonPanel";
 import ValueStreamImprovementPanel from "@/components/shared/ValueStreamImprovementPanel";
@@ -1088,6 +1089,12 @@ export default function FutureStatePage() {
               Send to Backlog
             </GlassButton>
           )}
+          <ExportDropdown
+            endpoint="/api/export/future-state"
+            params={{ orgId: currentOrg?.id, productId: selectedProductId || undefined }}
+            label="Export"
+            disabled={!currentOrg?.id}
+          />
         </div>
       </div>
 

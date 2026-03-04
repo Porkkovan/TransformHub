@@ -18,6 +18,7 @@ import { useAgentExecution } from "@/hooks/useAgentExecution";
 import { useBmadHierarchy } from "@/hooks/useBmadHierarchy";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { computeCapabilityRollup, parseFunctionalityTiming } from "@/lib/vsm-hierarchy";
+import ExportDropdown from "@/components/ui/ExportDropdown";
 
 export default function DiscoveryPage() {
   const router = useRouter();
@@ -230,9 +231,17 @@ export default function DiscoveryPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Discovery</h1>
-        <p className="text-white/50 mt-1">Analyze repositories and discover business functionalities</p>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Discovery</h1>
+          <p className="text-white/50 mt-1">Analyze repositories and discover business functionalities</p>
+        </div>
+        <ExportDropdown
+          endpoint="/api/export/discovery"
+          params={{ orgId: currentOrg?.id, segment: selectedSegment || undefined }}
+          label="Export"
+          disabled={!currentOrg?.id}
+        />
       </div>
 
       {/* Segment Filter */}

@@ -1,0 +1,76 @@
+import logging
+import os
+from typing import Optional
+
+import asyncpg
+
+logger = logging.getLogger(__name__)
+
+
+class DatabasePool:
+    """Async PostgreSQL connection pool backed by asyncpg.
+
+    Pool settings (configurable via environment variables):
+        DB_POOL_MIN       - minimum pool size (default: 5)
+        DB_POOL_MAX       - maximum pool size (default: 30)
+        DB_CONN_TIMEOUT   - seconds to wait for a connection from the pool (default: 30)
+        DB_CMD_TIMEOUT    - seconds to wait for a single SQL command (default: 60)
+    """
+
+    def __init__(self):
+        self._pool: Optional[asyncpg.Pool] = None
+
+    async def connect(self):
+        dsn = os.environ.get("DATABASE_URL")
+        if not dsn:
+            raise RuntimeError("DATABASE_URL environment variable is required")
+
+        min_size = int(os.environ.get("DB_POOL_MIN", "5"))
+        max_size = int(os.environ.get("DB_POOL_MAX", "30"))
+        conn_timeout = float(os.environ.get("DB_CONN_TIMEOUT", "30"))
+        cmd_timeout = float(os.environ.get("DB_CMD_TIMEOUT", "60"))
+
+        logger.info(
+            "Creating database pool (min=%d, max=%d, conn_timeout=%.0fs, cmd_timeout=%.0fs)",
+            min_size,
+            max_size,
+            conn_timeout,
+            cmd_timeout,
+        )
+
+        self._pool = await asyncpg.create_pool(
+            dsn=dsn,
+            min_size=min_size,
+            max_size=max_size,
+            timeout=conn_timeout,       # timeout for acquiring a connection from the pool
+            command_timeout=cmd_timeout, # timeout for individual SQL commands
+        )
+
+    async def disconnect(self):
+        if self._pool:
+            await self._pool.close()
+
+    @property
+    def pool(self) -> asyncpg.Pool:
+        if self._pool is None:
+            raise RuntimeError("Database pool not initialized. Call connect() first.")
+        return self._pool
+
+    async def fetch(self, query: str, *args):
+        async with self.pool.acquire() as conn:
+            return await conn.fetch(query, *args)
+
+    async def fetchrow(self, query: str, *args):
+        async with self.pool.acquire() as conn:
+            return await conn.fetchrow(query, *args)
+
+    async def fetchval(self, query: str, *args):
+        async with self.pool.acquire() as conn:
+            return await conn.fetchval(query, *args)
+
+    async def execute(self, query: str, *args):
+        async with self.pool.acquire() as conn:
+            return await conn.execute(query, *args)
+
+
+db_pool = DatabasePool()

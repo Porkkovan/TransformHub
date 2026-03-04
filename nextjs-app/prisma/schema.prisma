@@ -1,0 +1,601 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [vector]
+}
+
+// ─── Auth Models ──────────────────────────────────────────────────────────────
+
+model User {
+  id             String   @id @default(uuid())
+  name           String?
+  email          String   @unique
+  passwordHash   String?  @map("password_hash")
+  role           String   @default("MEMBER")
+  organizationId String?  @map("organization_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization    Organization?    @relation(fields: [organizationId], references: [id])
+  sessions        Session[]
+  accounts        Account[]
+  approvalReviews ApprovalRequest[] @relation("reviewer")
+  feedbacks       AgentFeedback[]
+
+  @@map("users")
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model Account {
+  id                String  @id @default(uuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+// ─── Organization ───────────────────────────────────────────────────────────
+
+model Organization {
+  id                   String   @id @default(uuid())
+  name                 String
+  slug                 String   @unique
+  industryType         String   @map("industry_type")
+  description          String?
+  competitors          String[]
+  businessSegments     String[] @map("business_segments")
+  regulatoryFrameworks String[] @map("regulatory_frameworks")
+  personas             Json     @default("[]")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  repositories          Repository[]
+  users                 User[]
+  pipelineExecutions    PipelineExecution[]
+  notificationConfigs   NotificationConfig[]
+  agentMemories         AgentMemory[]
+  agentExecutions       AgentExecution[]
+  chatConversations     ChatConversation[]
+  roadmapItems          RoadmapItem[]
+  contextDocuments      ContextDocument[]
+  contextEmbeddings     ContextEmbedding[]
+  contextApplications   ContextApplication[]
+  techTrends            TechTrend[]
+
+  @@map("organizations")
+}
+
+// ─── BMAD Hierarchy ─────────────────────────────────────────────────────────
+
+model Repository {
+  id             String   @id @default(uuid())
+  name           String
+  url            String?
+  description    String?
+  language       String?
+  organizationId String?  @map("organization_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization    Organization?    @relation(fields: [organizationId], references: [id])
+  digitalProducts DigitalProduct[]
+  agentExecutions AgentExecution[]
+  codeEmbeddings  CodeEmbedding[]
+
+  @@map("repositories")
+}
+
+model DigitalProduct {
+  id              String   @id @default(uuid())
+  name            String
+  description     String?
+  currentState    String?  @map("current_state")
+  futureState     String?  @map("future_state")
+  businessSegment String?  @map("business_segment")
+  repositoryId    String   @map("repository_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  repository          Repository          @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  digitalCapabilities DigitalCapability[]
+  productGroups       ProductGroup[]
+  roadmapItems        RoadmapItem[]
+
+  @@map("digital_products")
+}
+
+model DigitalCapability {
+  id               String   @id @default(uuid())
+  name             String
+  description      String?
+  category         String?
+  digitalProductId String   @map("digital_product_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  digitalProduct  DigitalProduct  @relation(fields: [digitalProductId], references: [id], onDelete: Cascade)
+  functionalities Functionality[]
+  vsmMetrics      VsmMetrics[]
+  roadmapItems    RoadmapItem[]
+
+  @@map("digital_capabilities")
+}
+
+model Functionality {
+  id                  String   @id @default(uuid())
+  name                String
+  description         String?
+  sourceFiles         String[] @map("source_files")
+  digitalCapabilityId String   @map("digital_capability_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  digitalCapability DigitalCapability @relation(fields: [digitalCapabilityId], references: [id], onDelete: Cascade)
+  personaMappings   PersonaMapping[]
+  roadmapItems      RoadmapItem[]
+
+  @@map("functionalities")
+}
+
+model ProductGroup {
+  id               String   @id @default(uuid())
+  name             String
+  description      String?
+  digitalProductId String   @map("digital_product_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  digitalProduct   DigitalProduct    @relation(fields: [digitalProductId], references: [id], onDelete: Cascade)
+  valueStreamSteps ValueStreamStep[]
+
+  @@map("product_groups")
+}
+
+model ValueStreamStep {
+  id             String   @id @default(uuid())
+  name           String
+  description    String?
+  stepOrder      Int      @map("step_order")
+  stepType       String   @default("process") @map("step_type")
+  productGroupId String   @map("product_group_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  productGroup ProductGroup @relation(fields: [productGroupId], references: [id], onDelete: Cascade)
+
+  @@map("value_stream_steps")
+}
+
+// ─── Supporting Models ──────────────────────────────────────────────────────
+
+model PersonaMapping {
+  id               String   @id @default(uuid())
+  personaType      String   @map("persona_type")
+  personaName      String   @map("persona_name")
+  responsibilities String[]
+  functionalityId  String   @map("functionality_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  functionality Functionality @relation(fields: [functionalityId], references: [id], onDelete: Cascade)
+
+  @@map("persona_mappings")
+}
+
+model VsmMetrics {
+  id                  String   @id @default(uuid())
+  processTime         Float    @map("process_time")
+  leadTime            Float    @map("lead_time")
+  waitTime            Float    @map("wait_time")
+  flowEfficiency      Float    @map("flow_efficiency")
+  mermaidSource       String?  @map("mermaid_source")
+  digitalCapabilityId String   @map("digital_capability_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  digitalCapability DigitalCapability @relation(fields: [digitalCapabilityId], references: [id], onDelete: Cascade)
+
+  @@map("vsm_metrics")
+}
+
+model RiskAssessment {
+  id                String   @id @default(uuid())
+  entityType        String   @map("entity_type")
+  entityId          String   @map("entity_id")
+  riskCategory      String   @map("risk_category")
+  riskScore         Float    @map("risk_score")
+  severity          String
+  description       String?
+  mitigationPlan    String?  @map("mitigation_plan")
+  transitionBlocked Boolean  @default(false) @map("transition_blocked")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("risk_assessments")
+}
+
+model ComplianceMapping {
+  id            String   @id @default(uuid())
+  framework     String
+  requirement   String
+  description   String?
+  entityType    String   @map("entity_type")
+  entityId      String   @map("entity_id")
+  status        String   @default("PENDING")
+  evidenceLinks String[] @map("evidence_links")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("compliance_mappings")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  action       String
+  entityType   String   @map("entity_type")
+  entityId     String   @map("entity_id")
+  actor        String   @default("system")
+  payload      Json
+  payloadHash  String   @map("payload_hash")
+  previousHash String?  @map("previous_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model AgentExecution {
+  id                String    @id @default(uuid())
+  agentType         String    @map("agent_type")
+  status            String    @default("PENDING")
+  input             Json?
+  output            Json?
+  errorMessage      String?   @map("error_message")
+  repositoryId      String?   @map("repository_id")
+  organizationId    String?   @map("organization_id")
+  retryCount        Int       @default(0) @map("retry_count")
+  maxRetries        Int       @default(3) @map("max_retries")
+  lastNodeCompleted String?   @map("last_node_completed")
+  checkpointData    Json?     @map("checkpoint_data")
+  startedAt         DateTime? @map("started_at")
+  completedAt       DateTime? @map("completed_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  repository       Repository?      @relation(fields: [repositoryId], references: [id])
+  organization     Organization?    @relation(fields: [organizationId], references: [id])
+  approvalRequests ApprovalRequest[]
+  feedbacks        AgentFeedback[]
+
+  @@index([agentType])
+  @@index([status])
+  @@map("agent_executions")
+}
+
+// ─── Phase 2: Execution Infrastructure ──────────────────────────────────────
+
+model DeadLetterJob {
+  id           String   @id @default(uuid())
+  agentType    String   @map("agent_type")
+  executionId  String   @map("execution_id")
+  inputData    Json     @map("input_data")
+  errorMessage String   @map("error_message")
+  attemptCount Int      @default(1) @map("attempt_count")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("dead_letter_jobs")
+}
+
+model AgentVersion {
+  id         String   @id @default(uuid())
+  agentType  String   @map("agent_type")
+  version    Int      @default(1)
+  promptHash String   @map("prompt_hash")
+  graphHash  String   @map("graph_hash")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@unique([agentType, version])
+  @@map("agent_versions")
+}
+
+// ─── Phase 3: RAG & Chat ────────────────────────────────────────────────────
+
+model CodeEmbedding {
+  id           String                       @id @default(uuid())
+  repositoryId String                       @map("repository_id")
+  filePath     String                       @map("file_path")
+  chunkIndex   Int                          @map("chunk_index")
+  content      String
+  embedding    Unsupported("vector(1536)")?
+  metadata     Json?
+  createdAt    DateTime                     @default(now()) @map("created_at")
+
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@index([repositoryId])
+  @@map("code_embeddings")
+}
+
+// ─── Context Hub ────────────────────────────────────────────────────────────
+
+model ContextDocument {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  fileName       String   @map("file_name")
+  fileType       String   @map("file_type")
+  fileSize       Int      @map("file_size")
+  filePath       String   @map("file_path")
+  category       String   @default("CURRENT_STATE")
+  subCategory    String?  @map("sub_category")
+  status         String   @default("UPLOADED")
+  errorMessage   String?  @map("error_message")
+  chunkCount     Int      @default(0) @map("chunk_count")
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization       @relation(fields: [organizationId], references: [id])
+  embeddings   ContextEmbedding[]
+
+  @@index([organizationId])
+  @@index([category])
+  @@index([status])
+  @@map("context_documents")
+}
+
+model ContextEmbedding {
+  id                String                       @id @default(uuid())
+  contextDocumentId String                       @map("context_document_id")
+  organizationId    String                       @map("organization_id")
+  chunkIndex        Int                          @map("chunk_index")
+  content           String
+  embedding         Unsupported("vector(1536)")?
+  metadata          Json?
+  createdAt         DateTime                     @default(now()) @map("created_at")
+
+  contextDocument ContextDocument @relation(fields: [contextDocumentId], references: [id], onDelete: Cascade)
+  organization    Organization    @relation(fields: [organizationId], references: [id])
+
+  @@index([contextDocumentId])
+  @@index([organizationId])
+  @@map("context_embeddings")
+}
+
+model ContextApplication {
+  id                  String   @id @default(uuid())
+  organizationId      String   @map("organization_id")
+  name                String
+  description         String?
+  vendor              String?
+  version             String?
+  status              String   @default("active")
+  businessSegment     String?  @map("business_segment")
+  technologyStack     String[] @map("technology_stack")
+  integrations        String[]
+  annualCost          Float?   @map("annual_cost")
+  userCount           Int?     @map("user_count")
+  businessCriticality String   @default("medium") @map("business_criticality")
+  metadata            Json?
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@index([status])
+  @@map("context_applications")
+}
+
+model ChatConversation {
+  id             String   @id @default(uuid())
+  title          String?
+  organizationId String?  @map("organization_id")
+  userId         String?  @map("user_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  messages     ChatMessage[]
+
+  @@map("chat_conversations")
+}
+
+model ChatMessage {
+  id             String   @id @default(uuid())
+  conversationId String   @map("conversation_id")
+  role           String
+  content        String
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("chat_messages")
+}
+
+// ─── Phase 4: Orchestration ─────────────────────────────────────────────────
+
+model PipelineExecution {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  repositoryId   String?  @map("repository_id")
+  status         String   @default("PENDING")
+  agentStatuses  Json?    @map("agent_statuses")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@map("pipeline_executions")
+}
+
+model ApprovalRequest {
+  id            String    @id @default(uuid())
+  executionId   String    @map("execution_id")
+  gateName      String    @map("gate_name")
+  agentType     String    @map("agent_type")
+  dataForReview Json?     @map("data_for_review")
+  status        String    @default("PENDING")
+  reviewedBy    String?   @map("reviewed_by")
+  reviewNote    String?   @map("review_note")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  execution AgentExecution @relation(fields: [executionId], references: [id])
+  reviewer  User?          @relation("reviewer", fields: [reviewedBy], references: [id])
+
+  @@map("approval_requests")
+}
+
+// ─── Phase 6: Memory & Learning ─────────────────────────────────────────────
+
+model AgentMemory {
+  id             String   @id @default(uuid())
+  agentType      String   @map("agent_type")
+  organizationId String?  @map("organization_id")
+  memoryType     String   @map("memory_type")
+  key            String
+  value          Json
+  confidence     Float    @default(1.0)
+  accessCount    Int      @default(0) @map("access_count")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+
+  @@index([agentType, organizationId])
+  @@map("agent_memories")
+}
+
+model AgentFeedback {
+  id          String   @id @default(uuid())
+  executionId String   @map("execution_id")
+  userId      String   @map("user_id")
+  rating      Int
+  corrections Json?
+  comment     String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  execution AgentExecution @relation(fields: [executionId], references: [id])
+  user      User           @relation(fields: [userId], references: [id])
+
+  @@map("agent_feedbacks")
+}
+
+// ─── Phase 7: Notifications ─────────────────────────────────────────────────
+
+model NotificationConfig {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  channel        String
+  config         Json
+  enabled        Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@map("notification_configs")
+}
+
+// ─── Product Roadmap ─────────────────────────────────────────────────────────
+
+model RoadmapItem {
+  id                  String   @id @default(uuid())
+  organizationId      String   @map("organization_id")
+  capabilityName      String   @map("capability_name")
+  category            String
+  description         String?
+  reach               Float    @default(0)
+  impact              Float    @default(0)
+  confidence          Float    @default(0)
+  effort              Float    @default(1)
+  riceScore           Float    @default(0) @map("rice_score")
+  quarter             String
+  status              String   @default("planned")
+  source              String   @default("agent")
+  approvalStatus      String   @default("PENDING") @map("approval_status")
+  reviewedBy          String?  @map("reviewed_by")
+  reviewNote          String?  @map("review_note")
+  digitalProductId    String?  @map("digital_product_id")
+  digitalCapabilityId String?  @map("digital_capability_id")
+  functionalityId     String?  @map("functionality_id")
+  itemType            String   @default("capability") @map("item_type")
+  initiative          String?
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  organization      Organization       @relation(fields: [organizationId], references: [id])
+  digitalProduct    DigitalProduct?    @relation(fields: [digitalProductId], references: [id])
+  digitalCapability DigitalCapability? @relation(fields: [digitalCapabilityId], references: [id])
+  functionality     Functionality?     @relation(fields: [functionalityId], references: [id])
+
+  @@index([organizationId])
+  @@index([riceScore])
+  @@index([digitalProductId])
+  @@map("roadmap_items")
+}
+
+// ─── Tech Trends ─────────────────────────────────────────────────────────────
+
+model TechTrend {
+  id               String   @id @default(uuid())
+  organizationId   String   @map("organization_id")
+  name             String
+  category         String
+  description      String?
+  maturityLevel    String   @map("maturity_level")
+  impactScore      Int      @default(5) @map("impact_score")
+  adoptionTimeline String?  @map("adoption_timeline")
+  source           String   @default("manual")
+  metadata         Json?
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@index([category])
+  @@index([maturityLevel])
+  @@map("tech_trends")
+}
+
+model NotificationLog {
+  id        String   @id @default(uuid())
+  channel   String
+  subject   String
+  body      String?
+  status    String   @default("SENT")
+  error     String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("notification_logs")
+}

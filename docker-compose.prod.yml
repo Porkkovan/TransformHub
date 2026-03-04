@@ -1,0 +1,223 @@
+# =============================================================================
+# TransformHub - Production Docker Compose
+# =============================================================================
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# This file extends docker-compose.yml with production-specific settings:
+#   - Nginx reverse proxy with SSL termination
+#   - Resource limits (CPU/memory) on all services
+#   - No direct port exposure for internal services (postgres, redis)
+#   - JSON-file logging with rotation
+#   - Named networks for service isolation
+#   - Production environment variables
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Nginx Reverse Proxy (production entry point)
+  # ---------------------------------------------------------------------------
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: transformhub-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Mount real SSL certs in production:
+      # - /etc/letsencrypt/live/yourdomain.com/fullchain.pem:/etc/nginx/ssl/fullchain.pem:ro
+      # - /etc/letsencrypt/live/yourdomain.com/privkey.pem:/etc/nginx/ssl/privkey.pem:ro
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      nextjs-app:
+        condition: service_healthy
+      agent-service:
+        condition: service_healthy
+    networks:
+      - frontend
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/nginx-health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL (internal only - no published ports)
+  # ---------------------------------------------------------------------------
+  postgres:
+    ports: !reset []
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-transformhub}
+      POSTGRES_USER: ${POSTGRES_USER:-transformhub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      # Production tuning
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=512MB"
+      - "-c"
+      - "effective_cache_size=1536MB"
+      - "-c"
+      - "maintenance_work_mem=128MB"
+      - "-c"
+      - "checkpoint_completion_target=0.9"
+      - "-c"
+      - "wal_buffers=16MB"
+      - "-c"
+      - "max_connections=200"
+      - "-c"
+      - "log_min_duration_statement=1000"
+
+  # ---------------------------------------------------------------------------
+  # Redis (internal only - no published ports)
+  # ---------------------------------------------------------------------------
+  redis:
+    ports: !reset []
+    networks:
+      - backend
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ---------------------------------------------------------------------------
+  # Next.js App (internal only - nginx proxies)
+  # ---------------------------------------------------------------------------
+  nextjs-app:
+    ports: !reset []
+    networks:
+      - frontend
+      - backend
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-transformhub}:${POSTGRES_PASSWORD:?err}@postgres:5432/${POSTGRES_DB:-transformhub}
+      AGENT_SERVICE_URL: http://agent-service:8000
+      API_KEY: ${API_KEY:-}
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?Set NEXTAUTH_SECRET in .env}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-https://localhost}
+      AUTH_TRUST_HOST: "true"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ---------------------------------------------------------------------------
+  # Agent Service (internal only - nginx proxies)
+  # ---------------------------------------------------------------------------
+  agent-service:
+    ports: !reset []
+    networks:
+      - backend
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-transformhub}:${POSTGRES_PASSWORD:?err}@postgres:5432/${POSTGRES_DB:-transformhub}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?Set ANTHROPIC_API_KEY in .env}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://localhost}
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: ${LOG_LEVEL:-WARNING}
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ---------------------------------------------------------------------------
+  # Agent Worker (internal only)
+  # ---------------------------------------------------------------------------
+  agent-worker:
+    networks:
+      - backend
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-transformhub}:${POSTGRES_PASSWORD:?err}@postgres:5432/${POSTGRES_DB:-transformhub}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?Set ANTHROPIC_API_KEY in .env}
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: ${LOG_LEVEL:-WARNING}
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+# ---------------------------------------------------------------------------
+# Named networks for service isolation
+# ---------------------------------------------------------------------------
+networks:
+  frontend:
+    driver: bridge
+    name: transformhub-frontend
+  backend:
+    driver: bridge
+    name: transformhub-backend

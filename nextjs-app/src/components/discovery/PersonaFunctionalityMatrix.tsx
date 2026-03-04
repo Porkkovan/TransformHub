@@ -1,0 +1,204 @@
+"use client";
+
+import { useMemo } from "react";
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+interface Persona {
+  type: string;
+  name: string;
+  responsibilities: string[];
+}
+
+interface FunctionalityMapping {
+  id: string;
+  name: string;
+  personaMappings: { personaType: string; personaName: string }[];
+}
+
+interface PersonaFunctionalityMatrixProps {
+  personas: Persona[];
+  functionalities: FunctionalityMapping[];
+}
+
+// ─── Persona color palette ──────────────────────────────────────────────────
+
+const PERSONA_COLORS = [
+  { dot: "bg-blue-400", ring: "ring-blue-400/30" },
+  { dot: "bg-purple-400", ring: "ring-purple-400/30" },
+  { dot: "bg-cyan-400", ring: "ring-cyan-400/30" },
+  { dot: "bg-green-400", ring: "ring-green-400/30" },
+  { dot: "bg-amber-400", ring: "ring-amber-400/30" },
+  { dot: "bg-rose-400", ring: "ring-rose-400/30" },
+  { dot: "bg-teal-400", ring: "ring-teal-400/30" },
+  { dot: "bg-indigo-400", ring: "ring-indigo-400/30" },
+];
+
+function getPersonaColor(index: number) {
+  return PERSONA_COLORS[index % PERSONA_COLORS.length];
+}
+
+// ─── Component ──────────────────────────────────────────────────────────────
+
+export default function PersonaFunctionalityMatrix({
+  personas,
+  functionalities,
+}: PersonaFunctionalityMatrixProps) {
+  // Build a fast lookup: functionalityId -> Set of personaType
+  const mappingLookup = useMemo(() => {
+    const lookup = new Map<string, Set<string>>();
+    for (const func of functionalities) {
+      const types = new Set(func.personaMappings.map((pm) => pm.personaType));
+      lookup.set(func.id, types);
+    }
+    return lookup;
+  }, [functionalities]);
+
+  // Compute coverage stats
+  const totalCells = personas.length * functionalities.length;
+  const mappedCells = useMemo(() => {
+    let count = 0;
+    for (const func of functionalities) {
+      for (const persona of personas) {
+        if (mappingLookup.get(func.id)?.has(persona.type)) {
+          count++;
+        }
+      }
+    }
+    return count;
+  }, [functionalities, personas, mappingLookup]);
+
+  const coveragePercent = totalCells > 0 ? Math.round((mappedCells / totalCells) * 100) : 0;
+
+  if (personas.length === 0 || functionalities.length === 0) {
+    return (
+      <div className="glass-panel-sm p-8 text-center">
+        <p className="text-sm text-white/40">
+          {personas.length === 0
+            ? "No personas available."
+            : "No functionalities available."}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* ── Summary bar ──────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-4 text-sm text-white/50">
+        <span>
+          <strong className="text-white/80">{personas.length}</strong> personas
+        </span>
+        <span className="text-white/20">|</span>
+        <span>
+          <strong className="text-white/80">{functionalities.length}</strong> functionalities
+        </span>
+        <span className="text-white/20">|</span>
+        <span>
+          <strong className="text-white/80">{coveragePercent}%</strong> coverage
+        </span>
+      </div>
+
+      {/* ── Matrix table ─────────────────────────────────────────────────── */}
+      <div className="glass-panel-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            {/* ── Header row ───────────────────────────────────────────── */}
+            <thead>
+              <tr className="bg-white/5 border-b border-white/10">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300 sticky left-0 bg-white/5 z-10 min-w-[180px]">
+                  Functionality
+                </th>
+                {personas.map((persona, pIdx) => {
+                  const color = getPersonaColor(pIdx);
+                  return (
+                    <th
+                      key={persona.type}
+                      className="px-3 py-3 text-center text-xs font-semibold text-slate-300 min-w-[100px]"
+                    >
+                      <div className="flex flex-col items-center gap-1.5">
+                        <span
+                          className={`w-2 h-2 rounded-full ${color.dot}`}
+                        />
+                        <span className="leading-tight">{persona.name}</span>
+                        <span className="font-normal text-white/30">
+                          {persona.type}
+                        </span>
+                      </div>
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+
+            {/* ── Body rows ────────────────────────────────────────────── */}
+            <tbody>
+              {functionalities.map((func, fIdx) => {
+                const personaTypes = mappingLookup.get(func.id);
+                const mappedCount = personas.filter((p) =>
+                  personaTypes?.has(p.type)
+                ).length;
+
+                return (
+                  <tr
+                    key={func.id}
+                    className={`border-b border-white/5 transition-colors hover:bg-white/5 ${
+                      fIdx % 2 === 0 ? "" : "bg-white/[0.02]"
+                    }`}
+                  >
+                    {/* Functionality name (sticky left) */}
+                    <td className="px-4 py-3 text-sm text-slate-200 sticky left-0 bg-inherit z-10">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate max-w-[200px]">{func.name}</span>
+                        <span className="shrink-0 text-xs text-white/25">
+                          ({mappedCount}/{personas.length})
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* Mapping cells */}
+                    {personas.map((persona, pIdx) => {
+                      const isMapped = personaTypes?.has(persona.type) ?? false;
+                      const color = getPersonaColor(pIdx);
+
+                      return (
+                        <td
+                          key={persona.type}
+                          className="px-3 py-3 text-center"
+                        >
+                          {isMapped ? (
+                            <span
+                              className={`inline-block w-3 h-3 rounded-full ${color.dot} ring-2 ${color.ring}`}
+                              title={`${persona.name} is mapped to ${func.name}`}
+                            />
+                          ) : (
+                            <span
+                              className="inline-block w-3 h-3 rounded-full bg-white/5"
+                              title={`${persona.name} is not mapped to ${func.name}`}
+                            />
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Legend ────────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap gap-3 text-xs text-white/40">
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block w-2.5 h-2.5 rounded-full bg-blue-400 ring-2 ring-blue-400/30" />
+          <span>Mapped</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block w-2.5 h-2.5 rounded-full bg-white/5" />
+          <span>Not mapped</span>
+        </div>
+      </div>
+    </div>
+  );
+}

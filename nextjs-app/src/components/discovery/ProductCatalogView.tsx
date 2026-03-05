@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import ConfidenceBadge from "@/components/ui/ConfidenceBadge";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -56,6 +56,7 @@ interface ProductCatalogViewProps {
   selectedSegment: string;
   onSegmentChange?: (seg: string) => void;
   businessSegments: string[];
+  onRefetch?: () => void;
 }
 
 // ─── Flat catalog row ─────────────────────────────────────────────────────────
@@ -80,6 +81,7 @@ export default function ProductCatalogView({
   selectedSegment,
   onSegmentChange,
   businessSegments,
+  onRefetch,
 }: ProductCatalogViewProps) {
   // Collapsed semantics: nothing in the set = all expanded
   const [collapsedSegments, setCollapsedSegments] = useState<Set<string>>(new Set());
@@ -88,9 +90,28 @@ export default function ProductCatalogView({
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
   const [expandedCaps, setExpandedCaps] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState(false);
+  const [syncingProducts, setSyncingProducts] = useState<Set<string>>(new Set());
+  const [syncResults, setSyncResults] = useState<Map<string, string>>(new Map());
   const [selectedAppIds, setSelectedAppIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
-  const [tableMode, setTableMode] = useState<"hierarchical" | "flat">("hierarchical");
+  const [tableMode, setTableMode] = useState<"hierarchical" | "flat">("flat");
+
+  // ── Auto-expand all products & caps when data changes ────────────────────
+  useEffect(() => {
+    const prods = new Set<string>();
+    const caps = new Set<string>();
+    for (const repo of repositories) {
+      for (const prod of repo.digitalProducts) {
+        if (selectedSegment && prod.businessSegment !== selectedSegment) continue;
+        prods.add(prod.id);
+        for (const cap of prod.digitalCapabilities) {
+          caps.add(cap.id);
+        }
+      }
+    }
+    setExpandedProducts(prods);
+    setExpandedCaps(caps);
+  }, [repositories, selectedSegment]);
 
   // ── Filtered repositories ─────────────────────────────────────────────────
   const filteredRepos = useMemo(() => {
@@ -307,6 +328,26 @@ export default function ProductCatalogView({
     }
   }
 
+  // ── VSM sync ──────────────────────────────────────────────────────────────
+  async function handleSyncFromVsm(productId: string) {
+    setSyncingProducts((p) => new Set(p).add(productId));
+    setSyncResults((m) => { const n = new Map(m); n.delete(productId); return n; });
+    try {
+      const res = await fetch(`/api/digital-products/${productId}/sync-from-vsm`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setSyncResults((m) => new Map(m).set(productId, data.error || "Sync failed"));
+      } else {
+        setSyncResults((m) => new Map(m).set(productId, `✓ +${data.created.capabilities} caps, +${data.created.functionalities} funcs`));
+        onRefetch?.();
+      }
+    } catch {
+      setSyncResults((m) => new Map(m).set(productId, "Sync error"));
+    } finally {
+      setSyncingProducts((p) => { const n = new Set(p); n.delete(productId); return n; });
+    }
+  }
+
   // ── Empty state ───────────────────────────────────────────────────────────
   if (repositories.length === 0) {
     return (
@@ -437,35 +478,74 @@ export default function ProductCatalogView({
           </div>
         ) : (
           <div className="glass-panel overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+            <div className="overflow-x-auto overflow-y-auto max-h-[70vh]">
+              <table className="w-full text-xs border-collapse">
                 <thead>
-                  <tr className="border-b border-white/10 bg-white/3">
-                    {["Segment", "Application", "Product Group (L0)", "Product (L1)", "Capability (L2)", "Functionality (L3)", "Personas"].map((h) => (
-                      <th key={h} className="px-3 py-2.5 text-left font-semibold text-white/70 whitespace-nowrap">{h}</th>
-                    ))}
+                  <tr className="border-b border-white/15 bg-[#0d1117]">
+                    <th className="sticky top-0 bg-[#0d1117] px-3 py-2.5 text-left font-semibold text-white/40 whitespace-nowrap z-10">#</th>
+                    <th className="sticky top-0 bg-[#0d1117] px-3 py-2.5 text-left font-semibold text-white/60 whitespace-nowrap z-10">Application</th>
+                    <th className="sticky top-0 bg-[#0d1117] px-3 py-2.5 text-left font-semibold text-amber-400/70 whitespace-nowrap z-10">Product Group <span className="text-white/30 font-normal">L0</span></th>
+                    <th className="sticky top-0 bg-[#0d1117] px-3 py-2.5 text-left font-semibold text-green-400/80 whitespace-nowrap z-10">Product <span className="text-white/30 font-normal">L1</span></th>
+                    <th className="sticky top-0 bg-[#0d1117] px-3 py-2.5 text-left font-semibold text-cyan-400/70 whitespace-nowrap z-10">Capability <span className="text-white/30 font-normal">L2</span></th>
+                    <th className="sticky top-0 bg-[#0d1117] px-3 py-2.5 text-left font-semibold text-purple-400/70 whitespace-nowrap z-10">Functionality <span className="text-white/30 font-normal">L3</span></th>
+                    <th className="sticky top-0 bg-[#0d1117] px-3 py-2.5 text-left font-semibold text-white/50 whitespace-nowrap z-10">Description</th>
+                    <th className="sticky top-0 bg-[#0d1117] px-3 py-2.5 text-left font-semibold text-white/50 whitespace-nowrap z-10">Personas</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/5">
+                <tbody>
                   {flatRows.map((r, i) => {
                     const groups = productGroupMap.get(r.productId) || "—";
+                    const prev = flatRows[i - 1];
+                    const newApp     = !prev || prev._appKey  !== r._appKey;
+                    const newProduct = !prev || prev._prodKey !== r._prodKey;
+                    const newCap     = !prev || prev._capKey  !== r._capKey;
                     return (
-                      <tr key={i} className={`hover:bg-white/3 transition-colors ${i % 2 === 1 ? "bg-white/[0.015]" : ""}`}>
-                        <td className="px-3 py-1.5 text-blue-300/70 whitespace-nowrap">{r.segment}</td>
-                        <td className="px-3 py-1.5 text-white/60 whitespace-nowrap">{r.appName}</td>
-                        <td className="px-3 py-1.5 text-amber-400/70">{groups}</td>
-                        <td className="px-3 py-1.5 text-green-400/80 font-medium whitespace-nowrap">{r.productName}</td>
-                        <td className="px-3 py-1.5 text-cyan-400/70 whitespace-nowrap">{r.capName !== "—" ? r.capName : <span className="text-white/20">—</span>}</td>
-                        <td className="px-3 py-1.5 text-purple-400/70">{r.funcName !== "—" ? r.funcName : <span className="text-white/20">—</span>}</td>
-                        <td className="px-3 py-1.5 text-amber-400/50">{r.personas || <span className="text-white/20">—</span>}</td>
+                      <tr
+                        key={i}
+                        className={`border-b border-white/[0.04] transition-colors hover:bg-white/[0.05] ${
+                          newProduct ? "border-t-2 border-t-white/10" : newCap ? "border-t border-t-white/[0.06]" : ""
+                        }`}
+                      >
+                        <td className="px-3 py-1.5 text-white/20 tabular-nums select-none">{i + 1}</td>
+                        <td className="px-3 py-1.5 text-blue-300/60 whitespace-nowrap">
+                          {newApp ? r.appName : ""}
+                        </td>
+                        <td className="px-3 py-1.5 text-amber-400/60 max-w-[150px]">
+                          {newProduct
+                            ? <span className="truncate block" title={groups}>{groups}</span>
+                            : ""}
+                        </td>
+                        <td className="px-3 py-1.5 text-green-400/80 font-medium max-w-[160px]">
+                          {newProduct
+                            ? <span className="truncate block" title={r.productName}>{r.productName}</span>
+                            : ""}
+                        </td>
+                        <td className="px-3 py-1.5 text-cyan-400/70 max-w-[160px]">
+                          {newCap && r.capName !== "—"
+                            ? <span className="truncate block" title={r.capName}>{r.capName}</span>
+                            : newCap ? "" : ""}
+                        </td>
+                        <td className="px-3 py-1.5 text-purple-400/80 max-w-[200px]">
+                          {r.funcName !== "—"
+                            ? <span className="truncate block" title={r.funcName}>{r.funcName}</span>
+                            : <span className="text-white/15">—</span>}
+                        </td>
+                        <td className="px-3 py-1.5 max-w-[260px]">
+                          <DescriptionCell funcDesc={r.funcDesc} productDesc={newProduct ? r.productDesc : ""} />
+                        </td>
+                        <td className="px-3 py-1.5 text-amber-400/55 whitespace-nowrap">
+                          {r.personas || <span className="text-white/15">—</span>}
+                        </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
-            <div className="px-4 py-2 border-t border-white/5 text-[10px] text-white/25">
-              {flatRows.length} rows
+            <div className="px-4 py-2 border-t border-white/5 flex items-center gap-4 text-[10px] text-white/30">
+              <span>{flatRows.length} rows</span>
+              <span>·</span>
+              <span>{counts.products} products · {counts.caps} capabilities · {counts.funcs} functionalities</span>
             </div>
           </div>
         )
@@ -534,9 +614,10 @@ export default function ProductCatalogView({
                       return (
                         <div key={prodEntry.productId} className="border-t border-white/5">
                           {/* Product row */}
+                          <div className="flex items-center gap-1 group">
                           <button
                             onClick={() => toggleProd(prodEntry.productId)}
-                            className={`w-full grid ${GRID} gap-0 pl-10 pr-3 py-2 hover:bg-white/3 transition-colors text-left`}
+                            className={`flex-1 grid ${GRID} gap-0 pl-10 pr-3 py-2 hover:bg-white/3 transition-colors text-left`}
                           >
                             <span className="flex items-center">
                               <ChevronIcon expanded={expandedProducts.has(prodEntry.productId)} />
@@ -554,8 +635,35 @@ export default function ProductCatalogView({
                               )}
                             </span>
                             <span /><span />
-                            <span className="text-[10px] text-white/30 self-center">{prodEntry.productDesc.slice(0, 60)}</span>
+                            <span className="flex items-center gap-2 text-[10px] text-white/30 self-center">
+                              {prodEntry.productDesc.slice(0, 60)}
+                              {syncResults.get(prodEntry.productId) && (
+                                <span className={syncResults.get(prodEntry.productId)!.startsWith("✓") ? "text-green-400" : "text-red-400"}>
+                                  {syncResults.get(prodEntry.productId)}
+                                </span>
+                              )}
+                            </span>
                           </button>
+                          {/* VSM sync button — shown on hover if product has VSM data */}
+                          {(() => {
+                            const prod = filteredRepos
+                              .flatMap((r) => r.digitalProducts)
+                              .find((p) => p.id === prodEntry.productId);
+                            const hasVsm = (prod?.productGroups ?? []).some((g) => g.valueStreamSteps.length > 0);
+                            if (!hasVsm) return null;
+                            const syncing = syncingProducts.has(prodEntry.productId);
+                            return (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleSyncFromVsm(prodEntry.productId); }}
+                                disabled={syncing}
+                                title="Import VSM value stream steps as capabilities & functionalities"
+                                className="opacity-0 group-hover:opacity-100 mr-3 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-cyan-400/70 border border-cyan-500/20 hover:bg-cyan-500/10 disabled:opacity-30 transition-all whitespace-nowrap"
+                              >
+                                {syncing ? "Syncing…" : "↓ Sync VSM"}
+                              </button>
+                            );
+                          })()}
+                          </div>
 
                           {expandedProducts.has(prodEntry.productId) && prodEntry.caps.map((capEntry) => {
                             const capC = confidenceMap.caps.get(capEntry.capId);
@@ -653,6 +761,31 @@ function ChevronIcon({ expanded, small }: { expanded: boolean; small?: boolean }
     >
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
     </svg>
+  );
+}
+
+function DescriptionCell({ funcDesc, productDesc }: { funcDesc: string; productDesc: string }) {
+  const text = funcDesc || productDesc;
+  if (!text) return <span className="text-white/15">—</span>;
+
+  // Detect "Bottleneck — 0.25h process, 8h wait" pattern
+  const bottleneckMatch = text.match(/^(Bottleneck|Value Adding)\s*[—-]\s*(.+)/i);
+  if (bottleneckMatch) {
+    const isBottleneck = bottleneckMatch[1].toLowerCase() === "bottleneck";
+    return (
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className={`shrink-0 px-1.5 py-0.5 rounded text-[9px] font-medium ${
+          isBottleneck ? "bg-red-500/15 text-red-400" : "bg-green-500/15 text-green-400"
+        }`}>
+          {isBottleneck ? "Bottleneck" : "Value Adding"}
+        </span>
+        <span className="text-white/30 truncate" title={bottleneckMatch[2]}>{bottleneckMatch[2]}</span>
+      </div>
+    );
+  }
+
+  return (
+    <span className="text-white/35 truncate block" title={text}>{text.slice(0, 80)}</span>
   );
 }
 

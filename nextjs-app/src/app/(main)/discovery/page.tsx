@@ -616,11 +616,29 @@ export default function DiscoveryPage() {
           {/* Persona Matrix — derived from functionalities visible in this segment */}
           {allFunctionalities.length > 0 && (() => {
             const derived = derivePersonas(allFunctionalities, personas);
-            return derived.length > 0 ? (
+            return (
               <GlassCard title="Persona-Functionality Matrix">
-                <PersonaFunctionalityMatrix personas={derived} functionalities={allFunctionalities} />
+                <PersonaFunctionalityMatrix
+                  personas={derived.length > 0 ? derived : personas}
+                  functionalities={allFunctionalities}
+                  onAutoMap={async () => {
+                    if (!currentOrg?.id) return null;
+                    const res = await fetch("/api/infer-personas", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        organizationId: currentOrg.id,
+                        repositoryId: repositoryIdForPass || undefined,
+                      }),
+                    });
+                    if (!res.ok) return null;
+                    const data = await res.json();
+                    await refetch();
+                    return { mapped: data.mapped as number, total: data.total as number };
+                  }}
+                />
               </GlassCard>
-            ) : null;
+            );
           })()}
           {personas.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -656,11 +674,31 @@ export default function DiscoveryPage() {
           </GlassCard>
           {drilldownFunctionalities.length > 0 && (() => {
             const derived = derivePersonas(drilldownFunctionalities, personas);
-            return derived.length > 0 ? (
+            return (
               <GlassCard title={drilldownProductId ? "Persona-Functionality Matrix — Selected Product" : "Persona-Functionality Matrix"}>
-                <PersonaFunctionalityMatrix personas={derived} functionalities={drilldownFunctionalities} />
+                <PersonaFunctionalityMatrix
+                  personas={derived.length > 0 ? derived : personas}
+                  functionalities={drilldownFunctionalities}
+                  onAutoMap={async () => {
+                    if (!currentOrg?.id) return null;
+                    // Scope to specific functionalities in the drilldown view
+                    const funcIds = drilldownFunctionalities.map((f) => f.id);
+                    const res = await fetch("/api/infer-personas", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        organizationId: currentOrg.id,
+                        functionalityIds: funcIds,
+                      }),
+                    });
+                    if (!res.ok) return null;
+                    const data = await res.json();
+                    await refetch();
+                    return { mapped: data.mapped as number, total: data.total as number };
+                  }}
+                />
               </GlassCard>
-            ) : null;
+            );
           })()}
         </div>
       )}
@@ -759,6 +797,7 @@ export default function DiscoveryPage() {
           selectedSegment={selectedSegment}
           onSegmentChange={setSelectedSegment}
           businessSegments={currentOrg.businessSegments ?? []}
+          onRefetch={refetch}
         />
       )}
 

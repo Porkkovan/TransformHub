@@ -19,6 +19,7 @@ import { useOrganization } from "@/contexts/OrganizationContext";
 import MermaidRenderer from "@/components/vsm/MermaidRenderer";
 import AgentOutputReviewPanel from "@/components/shared/AgentOutputReviewPanel";
 import ProcessMapImportModal from "@/components/vsm/ProcessMapImportModal";
+import VsmMetricsImportCard from "@/components/vsm/VsmMetricsImportCard";
 import { formatDuration } from "@/lib/format-duration";
 import {
   generateL1Mermaid,
@@ -365,6 +366,18 @@ function VsmPageInner() {
               </div>
             )}
           />
+
+          {/* Update VSM Metrics via CSV/XLSX */}
+          {selectedProduct && (
+            <div className="glass-panel-sm rounded-xl p-3 space-y-2 border border-white/5">
+              <p className="text-xs font-semibold text-white/60">Update VSM Metrics</p>
+              <VsmMetricsImportCard
+                productId={selectedProduct.id}
+                productName={selectedProduct.name}
+                onImported={() => refetchProducts()}
+              />
+            </div>
+          )}
 
           {/* Remove process map */}
           {capabilities.some((c) => (c.vsmMetrics?.length ?? 0) > 0) && (

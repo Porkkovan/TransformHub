@@ -20,6 +20,7 @@ from app.api.pipeline import router as pipeline_router
 from app.api.approvals import router as approvals_router
 from app.api.feedback import router as feedback_router
 from app.api.notifications import router as notifications_router
+from app.api.persona_inference import router as persona_inference_router
 
 load_dotenv()
 
@@ -66,3 +67,4 @@ app.include_router(pipeline_router, prefix="/api/v1", dependencies=_auth_deps)
 app.include_router(approvals_router, prefix="/api/v1", dependencies=_auth_deps)
 app.include_router(feedback_router, prefix="/api/v1", dependencies=_auth_deps)
 app.include_router(notifications_router, prefix="/api/v1", dependencies=_auth_deps)
+app.include_router(persona_inference_router, prefix="/api/v1", dependencies=_auth_deps)

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -19,6 +19,7 @@ interface FunctionalityMapping {
 interface PersonaFunctionalityMatrixProps {
   personas: Persona[];
   functionalities: FunctionalityMapping[];
+  onAutoMap?: () => Promise<{ mapped: number; total: number } | null>;
 }
 
 // ─── Persona color palette ──────────────────────────────────────────────────
@@ -43,7 +44,22 @@ function getPersonaColor(index: number) {
 export default function PersonaFunctionalityMatrix({
   personas,
   functionalities,
+  onAutoMap,
 }: PersonaFunctionalityMatrixProps) {
+  const [inferring, setInferring] = useState(false);
+  const [inferResult, setInferResult] = useState<{ mapped: number; total: number } | null>(null);
+
+  async function handleAutoMap() {
+    if (!onAutoMap) return;
+    setInferring(true);
+    setInferResult(null);
+    try {
+      const result = await onAutoMap();
+      setInferResult(result);
+    } finally {
+      setInferring(false);
+    }
+  }
   // Build a fast lookup: functionalityId -> Set of personaType
   const mappingLookup = useMemo(() => {
     const lookup = new Map<string, Set<string>>();
@@ -85,20 +101,50 @@ export default function PersonaFunctionalityMatrix({
   return (
     <div className="space-y-4">
       {/* ── Summary bar ──────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-4 text-sm text-white/50">
-        <span>
-          <strong className="text-white/80">{personas.length}</strong> personas
-        </span>
-        <span className="text-white/20">|</span>
-        <span>
-          <strong className="text-white/80">{functionalities.length}</strong> functionalities
-        </span>
-        <span className="text-white/20">|</span>
-        <span title={`${mappedCells} of ${totalCells} persona-functionality pairs have an assigned mapping`}>
-          <strong className="text-white/80">{coveragePercent}%</strong>
-          <span className="ml-1 text-white/30">coverage</span>
-          <span className="ml-1 text-white/20 text-xs">({mappedCells}/{totalCells} pairs mapped)</span>
-        </span>
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-4 text-sm text-white/50">
+          <span><strong className="text-white/80">{personas.length}</strong> personas</span>
+          <span className="text-white/20">|</span>
+          <span><strong className="text-white/80">{functionalities.length}</strong> functionalities</span>
+          <span className="text-white/20">|</span>
+          <span title={`${mappedCells} of ${totalCells} persona-functionality pairs have an assigned mapping`}>
+            <strong className="text-white/80">{coveragePercent}%</strong>
+            <span className="ml-1 text-white/30">coverage</span>
+            <span className="ml-1 text-white/20 text-xs">({mappedCells}/{totalCells} pairs mapped)</span>
+          </span>
+        </div>
+        <div className="flex-1" />
+        {onAutoMap && (
+          <div className="flex items-center gap-3">
+            {inferResult && (
+              <span className="text-xs text-green-400/80">
+                ✓ {inferResult.mapped} assignments inferred across {inferResult.total} functionalities
+              </span>
+            )}
+            <button
+              onClick={handleAutoMap}
+              disabled={inferring}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-500/15 text-purple-300 border border-purple-500/25 hover:bg-purple-500/25 disabled:opacity-50 transition-all"
+            >
+              {inferring ? (
+                <>
+                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Inferring with AI…
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  Auto-Map with AI
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Matrix table ─────────────────────────────────────────────────── */}

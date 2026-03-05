@@ -119,6 +119,8 @@ model DigitalProduct {
   futureState     String?  @map("future_state")
   businessSegment String?  @map("business_segment")
   repositoryId    String   @map("repository_id")
+  confidence      Float?
+  sources         String[]
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
@@ -136,6 +138,8 @@ model DigitalCapability {
   description      String?
   category         String?
   digitalProductId String   @map("digital_product_id")
+  confidence       Float?
+  sources          String[]
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
@@ -153,6 +157,8 @@ model Functionality {
   description         String?
   sourceFiles         String[] @map("source_files")
   digitalCapabilityId String   @map("digital_capability_id")
+  confidence          Float?
+  sources             String[]
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 

@@ -20,6 +20,8 @@ interface DigitalProduct {
   businessSegment?: string | null;
   digitalCapabilities: DigitalCapability[];
   productGroups: ProductGroup[];
+  confidence?: number | null;
+  sources?: string[];
 }
 
 interface VsmMetric {
@@ -38,6 +40,8 @@ interface DigitalCapability {
   category?: string;
   functionalities: Functionality[];
   vsmMetrics?: VsmMetric[];
+  confidence?: number | null;
+  sources?: string[];
 }
 
 interface Functionality {
@@ -46,6 +50,8 @@ interface Functionality {
   description?: string;
   sourceFiles: string[];
   personaMappings: PersonaMapping[];
+  confidence?: number | null;
+  sources?: string[];
 }
 
 interface PersonaMapping {

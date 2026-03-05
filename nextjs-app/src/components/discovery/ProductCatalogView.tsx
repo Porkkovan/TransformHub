@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import ConfidenceBadge from "@/components/ui/ConfidenceBadge";
 
 // ─── Types (mirrors useBmadHierarchy) ────────────────────────────────────────
 
@@ -10,6 +11,8 @@ interface Functionality {
   description?: string;
   sourceFiles: string[];
   personaMappings: { personaType: string; personaName: string }[];
+  confidence?: number | null;
+  sources?: string[];
 }
 
 interface DigitalCapability {
@@ -18,6 +21,8 @@ interface DigitalCapability {
   description?: string;
   category?: string;
   functionalities: Functionality[];
+  confidence?: number | null;
+  sources?: string[];
 }
 
 interface ProductGroup {
@@ -34,6 +39,8 @@ interface DigitalProduct {
   businessSegment?: string | null;
   digitalCapabilities: DigitalCapability[];
   productGroups: ProductGroup[];
+  confidence?: number | null;
+  sources?: string[];
 }
 
 interface Repository {
@@ -172,6 +179,25 @@ export default function ProductCatalogView({
     }
     return rows;
   }, [filteredRepos, searchQuery]);
+
+  // ── Confidence lookup maps (id → {confidence, sources}) ──────────────────
+  const confidenceMap = useMemo(() => {
+    const products = new Map<string, { confidence?: number | null; sources?: string[] }>();
+    const caps = new Map<string, { confidence?: number | null; sources?: string[] }>();
+    const funcs = new Map<string, { confidence?: number | null; sources?: string[] }>();
+    for (const repo of filteredRepos) {
+      for (const prod of repo.digitalProducts) {
+        products.set(prod.id, { confidence: prod.confidence, sources: prod.sources });
+        for (const cap of prod.digitalCapabilities) {
+          caps.set(cap.id, { confidence: cap.confidence, sources: cap.sources });
+          for (const func of cap.functionalities) {
+            funcs.set(func.id, { confidence: func.confidence, sources: func.sources });
+          }
+        }
+      }
+    }
+    return { products, caps, funcs };
+  }, [filteredRepos]);
 
   // ── Counts ────────────────────────────────────────────────────────────────
   const counts = useMemo(() => {
@@ -502,9 +528,15 @@ export default function ProductCatalogView({
                           <span className="flex items-center gap-1.5 col-span-1">
                             <ChevronIcon expanded={expandedProducts.has(prodEntry.productId)} />
                           </span>
-                          <span className="flex items-center gap-1.5">
+                          <span className="flex items-center gap-1.5 flex-wrap">
                             <div className="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0" />
                             <span className="text-xs text-white/80 font-medium">{prodEntry.productName}</span>
+                            {(() => {
+                              const c = confidenceMap.products.get(prodEntry.productId);
+                              return c?.confidence != null ? (
+                                <ConfidenceBadge confidence={c.confidence} sources={c.sources || []} size="xs" showSources={false} />
+                              ) : null;
+                            })()}
                           </span>
                           <span />
                           <span />
@@ -520,7 +552,7 @@ export default function ProductCatalogView({
                             >
                               <span />
                               <span />
-                              <span className="flex items-center gap-1.5">
+                              <span className="flex items-center gap-1.5 flex-wrap">
                                 <ChevronIcon expanded={expandedCaps.has(capEntry.capId)} small />
                                 <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 flex-shrink-0" />
                                 <span className="text-xs text-white/65">{capEntry.capName}</span>
@@ -529,6 +561,12 @@ export default function ProductCatalogView({
                                     {capEntry.capCategory}
                                   </span>
                                 )}
+                                {(() => {
+                                  const c = confidenceMap.caps.get(capEntry.capId);
+                                  return c?.confidence != null ? (
+                                    <ConfidenceBadge confidence={c.confidence} sources={c.sources || []} size="xs" showSources={false} />
+                                  ) : null;
+                                })()}
                               </span>
                               <span />
                               <span className="text-[10px] text-white/25 self-center">
@@ -545,9 +583,15 @@ export default function ProductCatalogView({
                                 <span />
                                 <span />
                                 <span />
-                                <span className="flex items-center gap-1.5 pl-4">
+                                <span className="flex items-center gap-1.5 flex-wrap pl-4">
                                   <div className="w-1 h-1 rounded-full bg-purple-400/70 flex-shrink-0" />
                                   <span className="text-xs text-white/55">{func.funcName}</span>
+                                  {(() => {
+                                    const c = confidenceMap.funcs.get(func.funcId);
+                                    return c?.confidence != null ? (
+                                      <ConfidenceBadge confidence={c.confidence} sources={c.sources || []} size="xs" showSources={false} />
+                                    ) : null;
+                                  })()}
                                 </span>
                                 <span className="text-[10px] text-white/30 self-center truncate">
                                   {func.personas

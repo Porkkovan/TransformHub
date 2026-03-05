@@ -180,6 +180,16 @@ export default function DiscoveryPage() {
   };
 
   // ── Derived data ─────────────────────────────────────────────────────────
+  const filteredRepositories = useMemo(() => {
+    if (!selectedSegment) return repositories;
+    return repositories.map((repo) => ({
+      ...repo,
+      digitalProducts: (repo.digitalProducts ?? []).filter(
+        (prod) => prod.businessSegment === selectedSegment
+      ),
+    })).filter((repo) => (repo.digitalProducts ?? []).length > 0);
+  }, [repositories, selectedSegment]);
+
   const allProductsFlat = useMemo(() => {
     type FlatProduct = {
       id: string; name: string; description?: string;
@@ -220,17 +230,7 @@ export default function DiscoveryPage() {
       }
     }
     return prods;
-  }, [repositories]);
-
-  const filteredRepositories = useMemo(() => {
-    if (!selectedSegment) return repositories;
-    return repositories.map((repo) => ({
-      ...repo,
-      digitalProducts: (repo.digitalProducts ?? []).filter(
-        (prod) => prod.businessSegment === selectedSegment
-      ),
-    })).filter((repo) => (repo.digitalProducts ?? []).length > 0);
-  }, [repositories, selectedSegment]);
+  }, [filteredRepositories]);
 
   const stats = useMemo(() => {
     let prodCount = 0, capCount = 0, funcCount = 0, groupCount = 0;

@@ -12,6 +12,7 @@ import MultiRepoInput, { RepoEntry } from "@/components/discovery/MultiRepoInput
 import HierarchyDrillDown from "@/components/discovery/HierarchyDrillDown";
 import EditableHierarchyItem from "@/components/discovery/EditableHierarchyItem";
 import PersonaFunctionalityMatrix from "@/components/discovery/PersonaFunctionalityMatrix";
+import ProductCatalogView from "@/components/discovery/ProductCatalogView";
 import BusinessSegmentSelector from "@/components/shared/BusinessSegmentSelector";
 import AgentOutputReviewPanel from "@/components/shared/AgentOutputReviewPanel";
 import { useAgentExecution } from "@/hooks/useAgentExecution";
@@ -25,7 +26,7 @@ export default function DiscoveryPage() {
   const { execution, loading, execute } = useAgentExecution();
   const { currentOrg } = useOrganization();
   const { repositories, refetch } = useBmadHierarchy(currentOrg?.id);
-  const [viewMode, setViewMode] = useState<"products" | "drilldown" | "tree">("products");
+  const [viewMode, setViewMode] = useState<"products" | "drilldown" | "tree" | "catalog">("products");
   const [drilldownProductId, setDrilldownProductId] = useState<string | null>(null);
   const [treeExpanded, setTreeExpanded] = useState<Record<string, boolean>>({});
   const [reviewStatus, setReviewStatus] = useState<"approved" | "rejected" | null>(null);
@@ -359,8 +360,8 @@ export default function DiscoveryPage() {
       {/* View Mode Toggle */}
       {(allProductsFlat.length > 0 || filteredRepositories.length > 0) && (
         <div className="flex gap-2">
-          {(["products", "drilldown", "tree"] as const).map((mode) => {
-            const labels = { products: "Products View", drilldown: "Drill-Down View", tree: "Tree View" };
+          {(["products", "drilldown", "tree", "catalog"] as const).map((mode) => {
+            const labels = { products: "Products View", drilldown: "Drill-Down View", tree: "Tree View", catalog: "Product Catalog" };
             return (
               <button
                 key={mode}
@@ -612,6 +613,17 @@ export default function DiscoveryPage() {
             )}
           </div>
         </GlassCard>
+      )}
+
+      {/* Product Catalog View */}
+      {viewMode === "catalog" && currentOrg && (
+        <ProductCatalogView
+          repositories={repositories}
+          orgId={currentOrg.id}
+          selectedSegment={selectedSegment}
+          onSegmentChange={setSelectedSegment}
+          businessSegments={currentOrg.businessSegments ?? []}
+        />
       )}
 
       {/* Proceed to VSM */}

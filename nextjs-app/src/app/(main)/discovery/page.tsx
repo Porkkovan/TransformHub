@@ -190,7 +190,7 @@ export default function DiscoveryPage() {
       confidence?: number | null; sources?: string[];
     };
     const prods: FlatProduct[] = [];
-    for (const repo of repositories) {
+    for (const repo of filteredRepositories) {
       for (const prod of repo.digitalProducts ?? []) {
         const caps = prod.digitalCapabilities ?? [];
         const funcCount = caps.reduce((s, c) => s + (c.functionalities?.length ?? 0), 0);
@@ -260,6 +260,22 @@ export default function DiscoveryPage() {
     }
     return funcs;
   }, [filteredRepositories]);
+
+  // Functionalities scoped to the selected product in Drill-Down view
+  const drilldownFunctionalities = useMemo(() => {
+    if (!drilldownProductId) return allFunctionalities;
+    for (const repo of repositories) {
+      const prod = (repo.digitalProducts ?? []).find((p) => p.id === drilldownProductId);
+      if (prod) {
+        return (prod.digitalCapabilities ?? []).flatMap((cap) =>
+          (cap.functionalities ?? []).map((func) => ({
+            id: func.id, name: func.name, personaMappings: func.personaMappings ?? [],
+          }))
+        );
+      }
+    }
+    return allFunctionalities;
+  }, [drilldownProductId, repositories, allFunctionalities]);
 
   const productOptions = useMemo(() => {
     const opts: { value: string; label: string }[] = [];
@@ -501,7 +517,7 @@ export default function DiscoveryPage() {
 
       {/* ── Products View ── */}
       {viewMode === "products" && (
-        <div className="space-y-4">
+        <div className="space-y-6">
           {allProductsFlat.length === 0 ? (
             <div className="glass-panel rounded-2xl p-10 text-center">
               <svg className="w-10 h-10 text-white/15 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -526,12 +542,9 @@ export default function DiscoveryPage() {
                       {prod.isProcessMap && <GlassBadge variant="warning">Process Map</GlassBadge>}
                     </div>
                   </div>
-
-                  {/* Confidence badge */}
                   {prod.confidence != null && (
                     <ConfidenceBadge confidence={prod.confidence} sources={prod.sources || []} size="xs" />
                   )}
-
                   <div className="grid grid-cols-2 gap-2">
                     <div className="glass-panel-sm rounded-lg p-2 text-center">
                       <p className="text-sm font-semibold text-white/80">{prod.capCount}</p>
@@ -542,7 +555,6 @@ export default function DiscoveryPage() {
                       <p className="text-[10px] text-white/40">Functionalities</p>
                     </div>
                   </div>
-
                   {prod.fe !== null && (
                     <div className="grid grid-cols-3 gap-2 text-center">
                       <div className="glass-panel-sm rounded-lg p-2">
@@ -561,7 +573,6 @@ export default function DiscoveryPage() {
                       </div>
                     </div>
                   )}
-
                   <div className="flex gap-2 pt-1">
                     <button
                       onClick={() => { setDrilldownProductId(prod.id); setViewMode("drilldown"); }}
@@ -580,18 +591,56 @@ export default function DiscoveryPage() {
               ))}
             </div>
           )}
+
+          {/* Persona Matrix — scoped to segment-filtered functionalities */}
+          {personas.length > 0 && allFunctionalities.length > 0 && (
+            <GlassCard title="Persona-Functionality Matrix">
+              <PersonaFunctionalityMatrix personas={personas} functionalities={allFunctionalities} />
+            </GlassCard>
+          )}
+          {personas.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {personas.map((persona) => (
+                <GlassCard key={persona.type} title={persona.name}>
+                  <GlassBadge variant={persona.type === "FRONT_OFFICE" ? "info" : persona.type === "MIDDLE_OFFICE" ? "warning" : "success"}>
+                    {persona.type.replace("_", " ")}
+                  </GlassBadge>
+                  <ul className="mt-3 space-y-2">
+                    {persona.responsibilities.map((r, i) => (
+                      <li key={i} className="text-sm text-white/60 flex items-center gap-2">
+                        <div className="w-1 h-1 rounded-full bg-white/30" />
+                        {r}
+                      </li>
+                    ))}
+                  </ul>
+                </GlassCard>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
       {/* ── Drill-Down View ── */}
       {viewMode === "drilldown" && (
-        <GlassCard title="Hierarchy Explorer">
-          <HierarchyDrillDown repositories={filteredRepositories} initialProductId={drilldownProductId ?? undefined} />
-        </GlassCard>
+        <div className="space-y-4">
+          <div className="glass-panel rounded-xl px-4 py-3 border border-white/5 text-xs text-white/40">
+            <span className="text-white/60 font-medium">How to use: </span>
+            Select a product below to explore its capabilities and functionalities in depth. Click a capability to see all its functionalities and VSM metrics.
+          </div>
+          <GlassCard title="Hierarchy Explorer">
+            <HierarchyDrillDown repositories={filteredRepositories} initialProductId={drilldownProductId ?? undefined} />
+          </GlassCard>
+          {personas.length > 0 && drilldownFunctionalities.length > 0 && (
+            <GlassCard title={`Persona-Functionality Matrix${drilldownProductId ? " — Selected Product" : ""}`}>
+              <PersonaFunctionalityMatrix personas={personas} functionalities={drilldownFunctionalities} />
+            </GlassCard>
+          )}
+        </div>
       )}
 
       {/* ── Tree View ── */}
       {viewMode === "tree" && (
+        <div className="space-y-4">
         <GlassCard title="BMAD Mapping Tree">
           <div className="space-y-2">
             {filteredRepositories.map((repo) => (
@@ -672,17 +721,30 @@ export default function DiscoveryPage() {
             ))}
           </div>
         </GlassCard>
+          {personas.length > 0 && allFunctionalities.length > 0 && (
+            <GlassCard title="Persona-Functionality Matrix">
+              <PersonaFunctionalityMatrix personas={personas} functionalities={allFunctionalities} />
+            </GlassCard>
+          )}
+        </div>
       )}
 
       {/* ── Product Catalog View ── */}
       {viewMode === "catalog" && currentOrg && (
-        <ProductCatalogView
-          repositories={repositories}
-          orgId={currentOrg.id}
-          selectedSegment={selectedSegment}
-          onSegmentChange={setSelectedSegment}
-          businessSegments={currentOrg.businessSegments ?? []}
-        />
+        <div className="space-y-4">
+          <ProductCatalogView
+            repositories={repositories}
+            orgId={currentOrg.id}
+            selectedSegment={selectedSegment}
+            onSegmentChange={setSelectedSegment}
+            businessSegments={currentOrg.businessSegments ?? []}
+          />
+          {personas.length > 0 && allFunctionalities.length > 0 && (
+            <GlassCard title="Persona-Functionality Matrix">
+              <PersonaFunctionalityMatrix personas={personas} functionalities={allFunctionalities} />
+            </GlassCard>
+          )}
+        </div>
       )}
 
       {/* Add New Item */}
@@ -726,33 +788,6 @@ export default function DiscoveryPage() {
         </div>
       )}
 
-      {/* Persona Matrix */}
-      {personas.length > 0 && allFunctionalities.length > 0 && (
-        <GlassCard title="Persona-Functionality Matrix">
-          <PersonaFunctionalityMatrix personas={personas} functionalities={allFunctionalities} />
-        </GlassCard>
-      )}
-
-      {/* Persona Cards */}
-      {personas.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {personas.map((persona) => (
-            <GlassCard key={persona.type} title={persona.name}>
-              <GlassBadge variant={persona.type === "FRONT_OFFICE" ? "info" : persona.type === "MIDDLE_OFFICE" ? "warning" : "success"}>
-                {persona.type.replace("_", " ")}
-              </GlassBadge>
-              <ul className="mt-3 space-y-2">
-                {persona.responsibilities.map((r, i) => (
-                  <li key={i} className="text-sm text-white/60 flex items-center gap-2">
-                    <div className="w-1 h-1 rounded-full bg-white/30" />
-                    {r}
-                  </li>
-                ))}
-              </ul>
-            </GlassCard>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

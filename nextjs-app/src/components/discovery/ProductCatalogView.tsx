@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react";
 import ConfidenceBadge from "@/components/ui/ConfidenceBadge";
 
-// ─── Types (mirrors useBmadHierarchy) ────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Functionality {
   id: string;
@@ -53,36 +53,26 @@ interface Repository {
 interface ProductCatalogViewProps {
   repositories: Repository[];
   orgId: string;
-  /** Pre-selected segment from the parent page's segment selector */
   selectedSegment: string;
   onSegmentChange?: (seg: string) => void;
   businessSegments: string[];
 }
 
-// ─── Flat catalog row type ────────────────────────────────────────────────────
+// ─── Flat catalog row ─────────────────────────────────────────────────────────
 
 interface CatalogRow {
   segment: string;
-  appId: string;
-  appName: string;
-  productId: string;
-  productName: string;
-  productDesc: string;
-  capId: string;
-  capName: string;
-  capCategory: string;
-  funcId: string;
-  funcName: string;
-  funcDesc: string;
-  personas: string;
-  // grouping key for visual merging
-  _segKey: string;
-  _appKey: string;
-  _prodKey: string;
-  _capKey: string;
+  appId: string; appName: string;
+  productId: string; productName: string; productDesc: string;
+  capId: string; capName: string; capCategory: string;
+  funcId: string; funcName: string; funcDesc: string; personas: string;
+  _segKey: string; _appKey: string; _prodKey: string; _capKey: string;
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
+// 6-column grid template: App | Group(L0) | Product(L1) | Cap(L2) | Func(L3) | Desc
+const GRID = "grid-cols-[0.9fr_0.8fr_1fr_1fr_1.1fr_1.3fr]";
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ProductCatalogView({
   repositories,
@@ -91,29 +81,17 @@ export default function ProductCatalogView({
   onSegmentChange,
   businessSegments,
 }: ProductCatalogViewProps) {
-  const [selectedAppIds, setSelectedAppIds] = useState<Set<string>>(new Set());
-  const [expandedSegments, setExpandedSegments] = useState<Set<string>>(new Set(["__all__"]));
-  const [expandedApps, setExpandedApps] = useState<Set<string>>(new Set());
+  // Collapsed semantics: nothing in the set = all expanded
+  const [collapsedSegments, setCollapsedSegments] = useState<Set<string>>(new Set());
+  const [collapsedApps, setCollapsedApps] = useState<Set<string>>(new Set());
+  // Expanded semantics for products/caps: must click to expand
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
   const [expandedCaps, setExpandedCaps] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState(false);
+  const [selectedAppIds, setSelectedAppIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
 
-  // ── Derive available apps for the selector (filtered by segment) ─────────
-  const availableApps = useMemo(() => {
-    const apps: { id: string; name: string; productCount: number }[] = [];
-    for (const repo of repositories) {
-      const matchingProducts = repo.digitalProducts.filter(
-        (p) => !selectedSegment || p.businessSegment === selectedSegment
-      );
-      if (matchingProducts.length > 0) {
-        apps.push({ id: repo.id, name: repo.name, productCount: matchingProducts.length });
-      }
-    }
-    return apps;
-  }, [repositories, selectedSegment]);
-
-  // ── Filtered repositories based on both segment + app selections ─────────
+  // ── Filtered repositories ─────────────────────────────────────────────────
   const filteredRepos = useMemo(() => {
     return repositories
       .filter((repo) => selectedAppIds.size === 0 || selectedAppIds.has(repo.id))
@@ -126,61 +104,36 @@ export default function ProductCatalogView({
       .filter((repo) => repo.digitalProducts.length > 0);
   }, [repositories, selectedSegment, selectedAppIds]);
 
-  // ── Build flat rows for counts and table ─────────────────────────────────
-  const flatRows = useMemo<CatalogRow[]>(() => {
-    const rows: CatalogRow[] = [];
-    const q = searchQuery.toLowerCase();
+  // ── Available apps for chip selector ─────────────────────────────────────
+  const availableApps = useMemo(() => {
+    return repositories
+      .filter((repo) =>
+        repo.digitalProducts.some(
+          (p) => !selectedSegment || p.businessSegment === selectedSegment
+        )
+      )
+      .map((repo) => ({
+        id: repo.id,
+        name: repo.name,
+        productCount: repo.digitalProducts.filter(
+          (p) => !selectedSegment || p.businessSegment === selectedSegment
+        ).length,
+      }));
+  }, [repositories, selectedSegment]);
 
+  // ── Product Group lookup (productId → comma-separated group names) ────────
+  const productGroupMap = useMemo(() => {
+    const map = new Map<string, string>();
     for (const repo of filteredRepos) {
       for (const prod of repo.digitalProducts) {
-        const segment = prod.businessSegment || "—";
-
-        if (prod.digitalCapabilities.length === 0) {
-          const row: CatalogRow = {
-            segment,
-            appId: repo.id, appName: repo.name,
-            productId: prod.id, productName: prod.name, productDesc: prod.description || "",
-            capId: "", capName: "—", capCategory: "",
-            funcId: "", funcName: "—", funcDesc: "", personas: "",
-            _segKey: segment, _appKey: repo.id, _prodKey: prod.id, _capKey: "",
-          };
-          if (!q || matchesQuery(row, q)) rows.push(row);
-          continue;
-        }
-
-        for (const cap of prod.digitalCapabilities) {
-          if (cap.functionalities.length === 0) {
-            const row: CatalogRow = {
-              segment,
-              appId: repo.id, appName: repo.name,
-              productId: prod.id, productName: prod.name, productDesc: prod.description || "",
-              capId: cap.id, capName: cap.name, capCategory: cap.category || "",
-              funcId: "", funcName: "—", funcDesc: "", personas: "",
-              _segKey: segment, _appKey: repo.id, _prodKey: prod.id, _capKey: cap.id,
-            };
-            if (!q || matchesQuery(row, q)) rows.push(row);
-            continue;
-          }
-
-          for (const func of cap.functionalities) {
-            const personas = func.personaMappings.map((pm) => pm.personaName).join(", ");
-            const row: CatalogRow = {
-              segment,
-              appId: repo.id, appName: repo.name,
-              productId: prod.id, productName: prod.name, productDesc: prod.description || "",
-              capId: cap.id, capName: cap.name, capCategory: cap.category || "",
-              funcId: func.id, funcName: func.name, funcDesc: func.description || "", personas,
-              _segKey: segment, _appKey: repo.id, _prodKey: prod.id, _capKey: cap.id,
-            };
-            if (!q || matchesQuery(row, q)) rows.push(row);
-          }
-        }
+        const names = (prod.productGroups || []).map((pg) => pg.name).join(", ");
+        map.set(prod.id, names);
       }
     }
-    return rows;
-  }, [filteredRepos, searchQuery]);
+    return map;
+  }, [filteredRepos]);
 
-  // ── Confidence lookup maps (id → {confidence, sources}) ──────────────────
+  // ── Confidence lookup maps ────────────────────────────────────────────────
   const confidenceMap = useMemo(() => {
     const products = new Map<string, { confidence?: number | null; sources?: string[] }>();
     const caps = new Map<string, { confidence?: number | null; sources?: string[] }>();
@@ -199,62 +152,135 @@ export default function ProductCatalogView({
     return { products, caps, funcs };
   }, [filteredRepos]);
 
+  // ── Flat rows for counts and search ──────────────────────────────────────
+  const flatRows = useMemo<CatalogRow[]>(() => {
+    const rows: CatalogRow[] = [];
+    const q = searchQuery.toLowerCase();
+
+    for (const repo of filteredRepos) {
+      for (const prod of repo.digitalProducts) {
+        const segment = prod.businessSegment || "—";
+
+        if (prod.digitalCapabilities.length === 0) {
+          const row: CatalogRow = {
+            segment, appId: repo.id, appName: repo.name,
+            productId: prod.id, productName: prod.name, productDesc: prod.description || "",
+            capId: "", capName: "—", capCategory: "",
+            funcId: "", funcName: "—", funcDesc: "", personas: "",
+            _segKey: segment, _appKey: repo.id, _prodKey: prod.id, _capKey: "",
+          };
+          if (!q || matchesQuery(row, q)) rows.push(row);
+          continue;
+        }
+
+        for (const cap of prod.digitalCapabilities) {
+          if (cap.functionalities.length === 0) {
+            const row: CatalogRow = {
+              segment, appId: repo.id, appName: repo.name,
+              productId: prod.id, productName: prod.name, productDesc: prod.description || "",
+              capId: cap.id, capName: cap.name, capCategory: cap.category || "",
+              funcId: "", funcName: "—", funcDesc: "", personas: "",
+              _segKey: segment, _appKey: repo.id, _prodKey: prod.id, _capKey: cap.id,
+            };
+            if (!q || matchesQuery(row, q)) rows.push(row);
+            continue;
+          }
+
+          for (const func of cap.functionalities) {
+            const personas = func.personaMappings.map((pm) => pm.personaName).join(", ");
+            const row: CatalogRow = {
+              segment, appId: repo.id, appName: repo.name,
+              productId: prod.id, productName: prod.name, productDesc: prod.description || "",
+              capId: cap.id, capName: cap.name, capCategory: cap.category || "",
+              funcId: func.id, funcName: func.name, funcDesc: func.description || "", personas,
+              _segKey: segment, _appKey: repo.id, _prodKey: prod.id, _capKey: cap.id,
+            };
+            if (!q || matchesQuery(row, q)) rows.push(row);
+          }
+        }
+      }
+    }
+    return rows;
+  }, [filteredRepos, searchQuery]);
+
   // ── Counts ────────────────────────────────────────────────────────────────
-  const counts = useMemo(() => {
-    const products = new Set(flatRows.map((r) => r.productId)).size;
-    const caps = new Set(flatRows.filter((r) => r.capId).map((r) => r.capId)).size;
-    const funcs = new Set(flatRows.filter((r) => r.funcId).map((r) => r.funcId)).size;
-    return { products, caps, funcs };
+  const counts = useMemo(() => ({
+    products: new Set(flatRows.map((r) => r.productId)).size,
+    caps: new Set(flatRows.filter((r) => r.capId).map((r) => r.capId)).size,
+    funcs: new Set(flatRows.filter((r) => r.funcId).map((r) => r.funcId)).size,
+  }), [flatRows]);
+
+  // ── Grouped structure for rendering ──────────────────────────────────────
+  type FuncEntry = { funcId: string; funcName: string; funcDesc: string; personas: string };
+  type CapEntry = { capId: string; capName: string; capCategory: string; funcs: FuncEntry[] };
+  type ProdEntry = { productId: string; productName: string; productDesc: string; caps: CapEntry[] };
+  type AppEntry = { appId: string; appName: string; products: ProdEntry[] };
+  type SegEntry = { segment: string; apps: AppEntry[] };
+
+  const grouped = useMemo<SegEntry[]>(() => {
+    type CapMeta = { capName: string; capCategory: string; funcs: FuncEntry[] };
+    type ProdMeta = { productName: string; productDesc: string; caps: Map<string, CapMeta> };
+    type AppMeta = { appName: string; products: Map<string, ProdMeta> };
+    type SegMeta = { apps: Map<string, AppMeta> };
+    const segMap = new Map<string, SegMeta>();
+
+    for (const r of flatRows) {
+      if (!segMap.has(r._segKey)) segMap.set(r._segKey, { apps: new Map() });
+      const segData = segMap.get(r._segKey)!;
+
+      if (!segData.apps.has(r._appKey)) segData.apps.set(r._appKey, { appName: r.appName, products: new Map() });
+      const appData = segData.apps.get(r._appKey)!;
+
+      if (!appData.products.has(r._prodKey)) appData.products.set(r._prodKey, { productName: r.productName, productDesc: r.productDesc, caps: new Map() });
+      const prodData = appData.products.get(r._prodKey)!;
+
+      const capKey = r._capKey || `__nocap_${r._prodKey}`;
+      if (!prodData.caps.has(capKey)) prodData.caps.set(capKey, { capName: r.capName, capCategory: r.capCategory, funcs: [] });
+      if (r.funcId) prodData.caps.get(capKey)!.funcs.push({ funcId: r.funcId, funcName: r.funcName, funcDesc: r.funcDesc, personas: r.personas });
+    }
+
+    return [...segMap.entries()].map(([seg, segData]) => ({
+      segment: seg,
+      apps: [...segData.apps.entries()].map(([appId, appData]) => ({
+        appId, appName: appData.appName,
+        products: [...appData.products.entries()].map(([prodId, prodData]) => ({
+          productId: prodId, productName: prodData.productName, productDesc: prodData.productDesc,
+          caps: [...prodData.caps.entries()].map(([capId, capData]) => ({
+            capId, capName: capData.capName, capCategory: capData.capCategory, funcs: capData.funcs,
+          })),
+        })),
+      })),
+    }));
   }, [flatRows]);
 
   // ── Toggle helpers ────────────────────────────────────────────────────────
-  function toggleApp(id: string) {
-    setSelectedAppIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
-
-  function toggleSeg(key: string) {
-    setExpandedSegments((prev) => toggle(prev, key));
-  }
-  function toggleApp2(key: string) {
-    setExpandedApps((prev) => toggle(prev, key));
-  }
-  function toggleProd(key: string) {
-    setExpandedProducts((prev) => toggle(prev, key));
-  }
-  function toggleCap(key: string) {
-    setExpandedCaps((prev) => toggle(prev, key));
-  }
-
-  function toggle(s: Set<string>, key: string) {
+  function toggleSet(s: Set<string>, key: string) {
     const next = new Set(s);
     next.has(key) ? next.delete(key) : next.add(key);
     return next;
   }
 
+  function toggleApp(id: string) { setSelectedAppIds((p) => toggleSet(p, id)); }
+  function toggleSeg(key: string) { setCollapsedSegments((p) => toggleSet(p, key)); }
+  function toggleApp2(key: string) { setCollapsedApps((p) => toggleSet(p, key)); }
+  function toggleProd(key: string) { setExpandedProducts((p) => toggleSet(p, key)); }
+  function toggleCap(key: string) { setExpandedCaps((p) => toggleSet(p, key)); }
+
   function expandAll() {
-    const segs = new Set<string>();
-    const apps = new Set<string>();
+    setCollapsedSegments(new Set());
+    setCollapsedApps(new Set());
     const prods = new Set<string>();
     const caps = new Set<string>();
-    for (const r of flatRows) {
-      segs.add(r._segKey);
-      apps.add(r._appKey);
-      prods.add(r._prodKey);
-      caps.add(r._capKey);
-    }
-    setExpandedSegments(segs);
-    setExpandedApps(apps);
+    for (const r of flatRows) { prods.add(r._prodKey); if (r._capKey) caps.add(r._capKey); }
     setExpandedProducts(prods);
     setExpandedCaps(caps);
   }
 
   function collapseAll() {
-    setExpandedSegments(new Set());
-    setExpandedApps(new Set());
+    const segs = new Set(grouped.map((s) => s.segment));
+    const apps = new Set(grouped.flatMap((s) => s.apps.map((a) => a.appId)));
+    setCollapsedSegments(segs);
+    setCollapsedApps(apps);
     setExpandedProducts(new Set());
     setExpandedCaps(new Set());
   }
@@ -280,75 +306,8 @@ export default function ProductCatalogView({
     }
   }
 
-  // ── Build grouped structure for rendering ─────────────────────────────────
-  // Group: segment → app → product → capability → [functionalities]
-  type FuncEntry = { funcId: string; funcName: string; funcDesc: string; personas: string };
-  type CapEntry = { capId: string; capName: string; capCategory: string; funcs: FuncEntry[] };
-  type ProdEntry = { productId: string; productName: string; productDesc: string; caps: CapEntry[] };
-  type AppEntry = { appId: string; appName: string; products: ProdEntry[] };
-  type SegEntry = { segment: string; apps: AppEntry[] };
-
-  const grouped = useMemo<SegEntry[]>(() => {
-    const segMap = new Map<string, Map<string, Map<string, Map<string, FuncEntry[]>>>>();
-    const segAppProdCapMeta = new Map<string, {
-      apps: Map<string, {
-        appName: string;
-        products: Map<string, {
-          productName: string; productDesc: string;
-          caps: Map<string, { capName: string; capCategory: string; funcs: FuncEntry[] }>
-        }>
-      }>
-    }>();
-
-    for (const r of flatRows) {
-      if (!segAppProdCapMeta.has(r._segKey)) {
-        segAppProdCapMeta.set(r._segKey, { apps: new Map() });
-      }
-      const segData = segAppProdCapMeta.get(r._segKey)!;
-
-      if (!segData.apps.has(r._appKey)) {
-        segData.apps.set(r._appKey, { appName: r.appName, products: new Map() });
-      }
-      const appData = segData.apps.get(r._appKey)!;
-
-      if (!appData.products.has(r._prodKey)) {
-        appData.products.set(r._prodKey, { productName: r.productName, productDesc: r.productDesc, caps: new Map() });
-      }
-      const prodData = appData.products.get(r._prodKey)!;
-
-      const capKey = r._capKey || `__nocap_${r._prodKey}`;
-      if (!prodData.caps.has(capKey)) {
-        prodData.caps.set(capKey, { capName: r.capName, capCategory: r.capCategory, funcs: [] });
-      }
-      const capData = prodData.caps.get(capKey)!;
-
-      if (r.funcId) {
-        capData.funcs.push({ funcId: r.funcId, funcName: r.funcName, funcDesc: r.funcDesc, personas: r.personas });
-      }
-    }
-
-    // Convert to array structure
-    const result: SegEntry[] = [];
-    for (const [seg, segData] of segAppProdCapMeta) {
-      const apps: AppEntry[] = [];
-      for (const [appId, appData] of segData.apps) {
-        const products: ProdEntry[] = [];
-        for (const [prodId, prodData] of appData.products) {
-          const caps: CapEntry[] = [];
-          for (const [capId, capData] of prodData.caps) {
-            caps.push({ capId, capName: capData.capName, capCategory: capData.capCategory, funcs: capData.funcs });
-          }
-          products.push({ productId: prodId, productName: prodData.productName, productDesc: prodData.productDesc, caps });
-        }
-        apps.push({ appId, appName: appData.appName, products });
-      }
-      result.push({ segment: seg, apps });
-    }
-    return result;
-  }, [flatRows]);
-
   // ── Empty state ───────────────────────────────────────────────────────────
-  if (filteredRepos.length === 0 && repositories.length === 0) {
+  if (repositories.length === 0) {
     return (
       <div className="glass-panel rounded-2xl p-10 text-center">
         <p className="text-white/40 text-sm">No digital products yet.</p>
@@ -359,10 +318,9 @@ export default function ProductCatalogView({
 
   return (
     <div className="space-y-5">
-      {/* ── Filter bar ─────────────────────────────────────────────────── */}
+      {/* ── Filter bar ── */}
       <div className="glass-panel p-4 space-y-4">
         <div className="flex flex-wrap items-end gap-4">
-          {/* Segment filter */}
           <div className="flex-1 min-w-[180px] max-w-xs">
             <label className="block text-xs text-white/50 mb-1.5">Business Segment</label>
             <select
@@ -376,8 +334,6 @@ export default function ProductCatalogView({
               ))}
             </select>
           </div>
-
-          {/* Search */}
           <div className="flex-1 min-w-[200px]">
             <label className="block text-xs text-white/50 mb-1.5">Search</label>
             <input
@@ -387,8 +343,6 @@ export default function ProductCatalogView({
               className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-blue-500/40"
             />
           </div>
-
-          {/* Download button */}
           <button
             onClick={handleDownload}
             disabled={downloading || flatRows.length === 0}
@@ -401,16 +355,12 @@ export default function ProductCatalogView({
           </button>
         </div>
 
-        {/* Application multi-select chips */}
         {availableApps.length > 0 && (
           <div>
             <p className="text-xs text-white/40 mb-2">
               Applications
               {selectedAppIds.size > 0 && (
-                <button
-                  onClick={() => setSelectedAppIds(new Set())}
-                  className="ml-2 text-blue-400/70 hover:text-blue-400"
-                >
+                <button onClick={() => setSelectedAppIds(new Set())} className="ml-2 text-blue-400/70 hover:text-blue-400">
                   Clear
                 </button>
               )}
@@ -438,7 +388,7 @@ export default function ProductCatalogView({
         )}
       </div>
 
-      {/* ── Stats bar ──────────────────────────────────────────────────── */}
+      {/* ── Stats bar ── */}
       <div className="flex flex-wrap gap-3">
         {[
           { label: "Products (L1)", value: counts.products, color: "text-green-400" },
@@ -458,7 +408,7 @@ export default function ProductCatalogView({
         </div>
       </div>
 
-      {/* ── Catalog Table ──────────────────────────────────────────────── */}
+      {/* ── Catalog Table ── */}
       {flatRows.length === 0 ? (
         <div className="glass-panel p-10 text-center border border-dashed border-white/10">
           <p className="text-white/40 text-sm">
@@ -467,21 +417,20 @@ export default function ProductCatalogView({
         </div>
       ) : (
         <div className="glass-panel overflow-hidden">
-          {/* Table header */}
-          <div className="grid grid-cols-[1fr_1.2fr_1.2fr_1.3fr_1.5fr] gap-0 border-b border-white/10 bg-white/3">
+          {/* Header */}
+          <div className={`grid ${GRID} gap-0 border-b border-white/10 bg-white/3`}>
             {[
-              { label: "Application", hint: "URL / Repo" },
-              { label: "Product", hint: "L1" },
-              { label: "Capability", hint: "L2" },
+              { label: "Application",   hint: "URL / Repo" },
+              { label: "Product Group", hint: "L0" },
+              { label: "Product",       hint: "L1" },
+              { label: "Capability",    hint: "L2" },
               { label: "Functionality", hint: "L3" },
               { label: "Description / Personas", hint: "" },
             ].map((col) => (
               <div key={col.label} className="px-3 py-2.5 flex items-center gap-1.5">
                 <span className="text-xs font-semibold text-white/70">{col.label}</span>
                 {col.hint && (
-                  <span className="text-[10px] text-white/25 font-mono bg-white/5 px-1 rounded">
-                    {col.hint}
-                  </span>
+                  <span className="text-[10px] text-white/25 font-mono bg-white/5 px-1 rounded">{col.hint}</span>
                 )}
               </div>
             ))}
@@ -491,120 +440,119 @@ export default function ProductCatalogView({
           <div className="divide-y divide-white/5">
             {grouped.map((segEntry) => (
               <div key={segEntry.segment}>
-                {/* Segment header row */}
+                {/* Segment header */}
                 <button
                   onClick={() => toggleSeg(segEntry.segment)}
                   className="w-full flex items-center gap-2 px-3 py-2 bg-blue-500/8 hover:bg-blue-500/12 transition-colors text-left"
                 >
-                  <ChevronIcon expanded={expandedSegments.has(segEntry.segment)} />
-                  <span className="text-xs font-bold text-blue-300 uppercase tracking-wide">
-                    {segEntry.segment}
-                  </span>
+                  <ChevronIcon expanded={!collapsedSegments.has(segEntry.segment)} />
+                  <span className="text-xs font-bold text-blue-300 uppercase tracking-wide">{segEntry.segment}</span>
                   <span className="text-[10px] text-white/30 ml-1">
                     {segEntry.apps.reduce((s, a) => s + a.products.length, 0)} products
                   </span>
                 </button>
 
-                {expandedSegments.has(segEntry.segment) && segEntry.apps.map((appEntry) => (
+                {!collapsedSegments.has(segEntry.segment) && segEntry.apps.map((appEntry) => (
                   <div key={appEntry.appId} className="border-t border-white/5">
                     {/* App row */}
                     <button
                       onClick={() => toggleApp2(appEntry.appId)}
                       className="w-full flex items-center gap-2 pl-6 pr-3 py-2 bg-white/3 hover:bg-white/5 transition-colors text-left"
                     >
-                      <ChevronIcon expanded={expandedApps.has(appEntry.appId)} />
+                      <ChevronIcon expanded={!collapsedApps.has(appEntry.appId)} />
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
                       <span className="text-xs font-medium text-white/80">{appEntry.appName}</span>
                       <span className="text-[10px] text-white/30">{appEntry.products.length} products</span>
                     </button>
 
-                    {expandedApps.has(appEntry.appId) && appEntry.products.map((prodEntry) => (
-                      <div key={prodEntry.productId} className="border-t border-white/5">
-                        {/* Product row */}
-                        <button
-                          onClick={() => toggleProd(prodEntry.productId)}
-                          className="w-full grid grid-cols-[1fr_1.2fr_1.2fr_1.3fr_1.5fr] gap-0 pl-10 pr-3 py-2 hover:bg-white/3 transition-colors text-left"
-                        >
-                          <span className="flex items-center gap-1.5 col-span-1">
-                            <ChevronIcon expanded={expandedProducts.has(prodEntry.productId)} />
-                          </span>
-                          <span className="flex items-center gap-1.5 flex-wrap">
-                            <div className="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0" />
-                            <span className="text-xs text-white/80 font-medium">{prodEntry.productName}</span>
-                            {(() => {
-                              const c = confidenceMap.products.get(prodEntry.productId);
-                              return c?.confidence != null ? (
-                                <ConfidenceBadge confidence={c.confidence} sources={c.sources || []} size="xs" showSources={false} />
-                              ) : null;
-                            })()}
-                          </span>
-                          <span />
-                          <span />
-                          <span className="text-[10px] text-white/30 self-center">{prodEntry.productDesc.slice(0, 60) || ""}</span>
-                        </button>
+                    {!collapsedApps.has(appEntry.appId) && appEntry.products.map((prodEntry) => {
+                      const prodGroups = productGroupMap.get(prodEntry.productId) || "—";
+                      const prodC = confidenceMap.products.get(prodEntry.productId);
+                      return (
+                        <div key={prodEntry.productId} className="border-t border-white/5">
+                          {/* Product row */}
+                          <button
+                            onClick={() => toggleProd(prodEntry.productId)}
+                            className={`w-full grid ${GRID} gap-0 pl-10 pr-3 py-2 hover:bg-white/3 transition-colors text-left`}
+                          >
+                            <span className="flex items-center">
+                              <ChevronIcon expanded={expandedProducts.has(prodEntry.productId)} />
+                            </span>
+                            {/* L0 Product Group */}
+                            <span className="flex items-center pr-2">
+                              <span className="text-[10px] text-amber-400/70 truncate">{prodGroups}</span>
+                            </span>
+                            {/* L1 Product */}
+                            <span className="flex items-center gap-1.5 flex-wrap">
+                              <div className="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0" />
+                              <span className="text-xs text-white/80 font-medium">{prodEntry.productName}</span>
+                              {prodC?.confidence != null && (
+                                <ConfidenceBadge confidence={prodC.confidence} sources={prodC.sources || []} size="xs" showSources={false} />
+                              )}
+                            </span>
+                            <span /><span />
+                            <span className="text-[10px] text-white/30 self-center">{prodEntry.productDesc.slice(0, 60)}</span>
+                          </button>
 
-                        {expandedProducts.has(prodEntry.productId) && prodEntry.caps.map((capEntry) => (
-                          <div key={capEntry.capId} className="border-t border-white/[0.04]">
-                            {/* Capability row */}
-                            <button
-                              onClick={() => toggleCap(capEntry.capId)}
-                              className="w-full grid grid-cols-[1fr_1.2fr_1.2fr_1.3fr_1.5fr] gap-0 pl-14 pr-3 py-1.5 hover:bg-white/3 transition-colors text-left"
-                            >
-                              <span />
-                              <span />
-                              <span className="flex items-center gap-1.5 flex-wrap">
-                                <ChevronIcon expanded={expandedCaps.has(capEntry.capId)} small />
-                                <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 flex-shrink-0" />
-                                <span className="text-xs text-white/65">{capEntry.capName}</span>
-                                {capEntry.capCategory && capEntry.capCategory !== "—" && (
-                                  <span className="text-[9px] text-cyan-400/50 bg-cyan-400/8 px-1 rounded font-mono">
-                                    {capEntry.capCategory}
+                          {expandedProducts.has(prodEntry.productId) && prodEntry.caps.map((capEntry) => {
+                            const capC = confidenceMap.caps.get(capEntry.capId);
+                            return (
+                              <div key={capEntry.capId} className="border-t border-white/[0.04]">
+                                {/* Capability row */}
+                                <button
+                                  onClick={() => toggleCap(capEntry.capId)}
+                                  className={`w-full grid ${GRID} gap-0 pl-14 pr-3 py-1.5 hover:bg-white/3 transition-colors text-left`}
+                                >
+                                  <span /><span />
+                                  <span />
+                                  <span className="flex items-center gap-1.5 flex-wrap">
+                                    <ChevronIcon expanded={expandedCaps.has(capEntry.capId)} small />
+                                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 flex-shrink-0" />
+                                    <span className="text-xs text-white/65">{capEntry.capName}</span>
+                                    {capEntry.capCategory && capEntry.capCategory !== "—" && (
+                                      <span className="text-[9px] text-cyan-400/50 bg-cyan-400/8 px-1 rounded font-mono">{capEntry.capCategory}</span>
+                                    )}
+                                    {capC?.confidence != null && (
+                                      <ConfidenceBadge confidence={capC.confidence} sources={capC.sources || []} size="xs" showSources={false} />
+                                    )}
                                   </span>
-                                )}
-                                {(() => {
-                                  const c = confidenceMap.caps.get(capEntry.capId);
-                                  return c?.confidence != null ? (
-                                    <ConfidenceBadge confidence={c.confidence} sources={c.sources || []} size="xs" showSources={false} />
-                                  ) : null;
-                                })()}
-                              </span>
-                              <span />
-                              <span className="text-[10px] text-white/25 self-center">
-                                {capEntry.funcs.length > 0 ? `${capEntry.funcs.length} functionalities` : ""}
-                              </span>
-                            </button>
+                                  <span />
+                                  <span className="text-[10px] text-white/25 self-center">
+                                    {capEntry.funcs.length > 0 ? `${capEntry.funcs.length} functionalities` : ""}
+                                  </span>
+                                </button>
 
-                            {/* Functionality rows */}
-                            {expandedCaps.has(capEntry.capId) && capEntry.funcs.map((func, fi) => (
-                              <div
-                                key={func.funcId || fi}
-                                className="grid grid-cols-[1fr_1.2fr_1.2fr_1.3fr_1.5fr] gap-0 pl-14 pr-3 py-1 border-t border-white/[0.03] hover:bg-purple-500/3"
-                              >
-                                <span />
-                                <span />
-                                <span />
-                                <span className="flex items-center gap-1.5 flex-wrap pl-4">
-                                  <div className="w-1 h-1 rounded-full bg-purple-400/70 flex-shrink-0" />
-                                  <span className="text-xs text-white/55">{func.funcName}</span>
-                                  {(() => {
-                                    const c = confidenceMap.funcs.get(func.funcId);
-                                    return c?.confidence != null ? (
-                                      <ConfidenceBadge confidence={c.confidence} sources={c.sources || []} size="xs" showSources={false} />
-                                    ) : null;
-                                  })()}
-                                </span>
-                                <span className="text-[10px] text-white/30 self-center truncate">
-                                  {func.personas
-                                    ? <span className="text-amber-400/60">{func.personas}</span>
-                                    : <span className="text-white/20">{func.funcDesc.slice(0, 60)}</span>
-                                  }
-                                </span>
+                                {/* Functionality rows */}
+                                {expandedCaps.has(capEntry.capId) && capEntry.funcs.map((func, fi) => {
+                                  const funcC = confidenceMap.funcs.get(func.funcId);
+                                  return (
+                                    <div
+                                      key={func.funcId || fi}
+                                      className={`grid ${GRID} gap-0 pl-14 pr-3 py-1 border-t border-white/[0.03] hover:bg-purple-500/3`}
+                                    >
+                                      <span /><span /><span /><span />
+                                      <span className="flex items-center gap-1.5 flex-wrap pl-4">
+                                        <div className="w-1 h-1 rounded-full bg-purple-400/70 flex-shrink-0" />
+                                        <span className="text-xs text-white/55">{func.funcName}</span>
+                                        {funcC?.confidence != null && (
+                                          <ConfidenceBadge confidence={funcC.confidence} sources={funcC.sources || []} size="xs" showSources={false} />
+                                        )}
+                                      </span>
+                                      <span className="text-[10px] text-white/30 self-center truncate">
+                                        {func.personas
+                                          ? <span className="text-amber-400/60">{func.personas}</span>
+                                          : <span className="text-white/20">{func.funcDesc.slice(0, 60)}</span>
+                                        }
+                                      </span>
+                                    </div>
+                                  );
+                                })}
                               </div>
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                    ))}
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
                   </div>
                 ))}
               </div>
@@ -614,9 +562,10 @@ export default function ProductCatalogView({
           {/* Legend */}
           <div className="px-4 py-2.5 border-t border-white/5 flex flex-wrap gap-4 text-[10px] text-white/30">
             {[
-              { color: "bg-blue-400", label: "Application (Repository)" },
-              { color: "bg-green-400", label: "Product (L1)" },
-              { color: "bg-cyan-400", label: "Capability (L2)" },
+              { color: "bg-blue-400",   label: "Application (Repository)" },
+              { color: "bg-amber-400",  label: "Product Group (L0)" },
+              { color: "bg-green-400",  label: "Product (L1)" },
+              { color: "bg-cyan-400",   label: "Capability (L2)" },
               { color: "bg-purple-400", label: "Functionality (L3)" },
             ].map((l) => (
               <span key={l.label} className="flex items-center gap-1.5">
@@ -631,22 +580,18 @@ export default function ProductCatalogView({
   );
 }
 
-// ─── Chevron icon ─────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function ChevronIcon({ expanded, small }: { expanded: boolean; small?: boolean }) {
   return (
     <svg
       className={`flex-shrink-0 text-white/30 transition-transform ${expanded ? "rotate-90" : ""} ${small ? "w-2.5 h-2.5" : "w-3 h-3"}`}
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
+      fill="none" stroke="currentColor" viewBox="0 0 24 24"
     >
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
     </svg>
   );
 }
-
-// ─── Query helper ─────────────────────────────────────────────────────────────
 
 function matchesQuery(r: CatalogRow, q: string) {
   return (

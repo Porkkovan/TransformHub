@@ -90,6 +90,7 @@ export default function ProductCatalogView({
   const [downloading, setDownloading] = useState(false);
   const [selectedAppIds, setSelectedAppIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
+  const [tableMode, setTableMode] = useState<"hierarchical" | "flat">("hierarchical");
 
   // ── Filtered repositories ─────────────────────────────────────────────────
   const filteredRepos = useMemo(() => {
@@ -401,15 +402,77 @@ export default function ProductCatalogView({
           </div>
         ))}
         <div className="flex-1" />
-        <div className="flex items-center gap-2">
-          <button onClick={expandAll} className="text-xs text-white/40 hover:text-white/70 transition-colors">Expand All</button>
-          <span className="text-white/20">|</span>
-          <button onClick={collapseAll} className="text-xs text-white/40 hover:text-white/70 transition-colors">Collapse All</button>
+        {/* View mode toggle */}
+        <div className="flex items-center gap-1 p-0.5 glass-panel-sm rounded-lg">
+          {(["hierarchical", "flat"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setTableMode(m)}
+              className={`px-3 py-1 rounded text-xs font-medium transition-all ${
+                tableMode === m
+                  ? "bg-blue-500/25 text-blue-300"
+                  : "text-white/40 hover:text-white/60"
+              }`}
+            >
+              {m === "hierarchical" ? "Tree" : "Flat Table"}
+            </button>
+          ))}
         </div>
+        {tableMode === "hierarchical" && (
+          <div className="flex items-center gap-2">
+            <button onClick={expandAll} className="text-xs text-white/40 hover:text-white/70 transition-colors">Expand All</button>
+            <span className="text-white/20">|</span>
+            <button onClick={collapseAll} className="text-xs text-white/40 hover:text-white/70 transition-colors">Collapse All</button>
+          </div>
+        )}
       </div>
 
-      {/* ── Catalog Table ── */}
-      {flatRows.length === 0 ? (
+      {/* ── Flat Table View ── */}
+      {tableMode === "flat" && (
+        flatRows.length === 0 ? (
+          <div className="glass-panel p-10 text-center border border-dashed border-white/10">
+            <p className="text-white/40 text-sm">
+              {searchQuery ? "No results match your search." : "No products in the selected segment / application."}
+            </p>
+          </div>
+        ) : (
+          <div className="glass-panel overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-white/10 bg-white/3">
+                    {["Segment", "Application", "Product Group (L0)", "Product (L1)", "Capability (L2)", "Functionality (L3)", "Personas"].map((h) => (
+                      <th key={h} className="px-3 py-2.5 text-left font-semibold text-white/70 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {flatRows.map((r, i) => {
+                    const groups = productGroupMap.get(r.productId) || "—";
+                    return (
+                      <tr key={i} className={`hover:bg-white/3 transition-colors ${i % 2 === 1 ? "bg-white/[0.015]" : ""}`}>
+                        <td className="px-3 py-1.5 text-blue-300/70 whitespace-nowrap">{r.segment}</td>
+                        <td className="px-3 py-1.5 text-white/60 whitespace-nowrap">{r.appName}</td>
+                        <td className="px-3 py-1.5 text-amber-400/70">{groups}</td>
+                        <td className="px-3 py-1.5 text-green-400/80 font-medium whitespace-nowrap">{r.productName}</td>
+                        <td className="px-3 py-1.5 text-cyan-400/70 whitespace-nowrap">{r.capName !== "—" ? r.capName : <span className="text-white/20">—</span>}</td>
+                        <td className="px-3 py-1.5 text-purple-400/70">{r.funcName !== "—" ? r.funcName : <span className="text-white/20">—</span>}</td>
+                        <td className="px-3 py-1.5 text-amber-400/50">{r.personas || <span className="text-white/20">—</span>}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-4 py-2 border-t border-white/5 text-[10px] text-white/25">
+              {flatRows.length} rows
+            </div>
+          </div>
+        )
+      )}
+
+      {/* ── Hierarchical Catalog Table ── */}
+      {tableMode === "hierarchical" && (flatRows.length === 0 ? (
         <div className="glass-panel p-10 text-center border border-dashed border-white/10">
           <p className="text-white/40 text-sm">
             {searchQuery ? "No results match your search." : "No products in the selected segment / application."}
@@ -575,7 +638,7 @@ export default function ProductCatalogView({
             ))}
           </div>
         </div>
-      )}
+      ))}
     </div>
   );
 }

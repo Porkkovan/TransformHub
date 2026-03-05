@@ -94,8 +94,10 @@ export default function PersonaFunctionalityMatrix({
           <strong className="text-white/80">{functionalities.length}</strong> functionalities
         </span>
         <span className="text-white/20">|</span>
-        <span>
-          <strong className="text-white/80">{coveragePercent}%</strong> coverage
+        <span title={`${mappedCells} of ${totalCells} persona-functionality pairs have an assigned mapping`}>
+          <strong className="text-white/80">{coveragePercent}%</strong>
+          <span className="ml-1 text-white/30">coverage</span>
+          <span className="ml-1 text-white/20 text-xs">({mappedCells}/{totalCells} pairs mapped)</span>
         </span>
       </div>
 

@@ -277,6 +277,27 @@ export default function DiscoveryPage() {
     return allFunctionalities;
   }, [drilldownProductId, repositories, allFunctionalities]);
 
+  // Derive personas that actually appear in the visible functionalities' mappings
+  function derivePersonas(
+    funcs: { personaMappings: { personaType: string; personaName: string }[] }[],
+    orgPersonas: { type: string; name: string; responsibilities: string[] }[]
+  ) {
+    const map = new Map<string, { type: string; name: string; responsibilities: string[] }>();
+    for (const func of funcs) {
+      for (const pm of func.personaMappings ?? []) {
+        if (!map.has(pm.personaType)) {
+          const org = orgPersonas.find((p) => p.type === pm.personaType);
+          map.set(pm.personaType, {
+            type: pm.personaType,
+            name: org?.name || pm.personaName || pm.personaType,
+            responsibilities: org?.responsibilities || [],
+          });
+        }
+      }
+    }
+    return [...map.values()];
+  }
+
   const productOptions = useMemo(() => {
     const opts: { value: string; label: string }[] = [];
     for (const repo of repositories) {
@@ -592,12 +613,15 @@ export default function DiscoveryPage() {
             </div>
           )}
 
-          {/* Persona Matrix — scoped to segment-filtered functionalities */}
-          {personas.length > 0 && allFunctionalities.length > 0 && (
-            <GlassCard title="Persona-Functionality Matrix">
-              <PersonaFunctionalityMatrix personas={personas} functionalities={allFunctionalities} />
-            </GlassCard>
-          )}
+          {/* Persona Matrix — derived from functionalities visible in this segment */}
+          {allFunctionalities.length > 0 && (() => {
+            const derived = derivePersonas(allFunctionalities, personas);
+            return derived.length > 0 ? (
+              <GlassCard title="Persona-Functionality Matrix">
+                <PersonaFunctionalityMatrix personas={derived} functionalities={allFunctionalities} />
+              </GlassCard>
+            ) : null;
+          })()}
           {personas.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {personas.map((persona) => (
@@ -630,11 +654,14 @@ export default function DiscoveryPage() {
           <GlassCard title="Hierarchy Explorer">
             <HierarchyDrillDown repositories={filteredRepositories} initialProductId={drilldownProductId ?? undefined} />
           </GlassCard>
-          {personas.length > 0 && drilldownFunctionalities.length > 0 && (
-            <GlassCard title={`Persona-Functionality Matrix${drilldownProductId ? " — Selected Product" : ""}`}>
-              <PersonaFunctionalityMatrix personas={personas} functionalities={drilldownFunctionalities} />
-            </GlassCard>
-          )}
+          {drilldownFunctionalities.length > 0 && (() => {
+            const derived = derivePersonas(drilldownFunctionalities, personas);
+            return derived.length > 0 ? (
+              <GlassCard title={drilldownProductId ? "Persona-Functionality Matrix — Selected Product" : "Persona-Functionality Matrix"}>
+                <PersonaFunctionalityMatrix personas={derived} functionalities={drilldownFunctionalities} />
+              </GlassCard>
+            ) : null;
+          })()}
         </div>
       )}
 
@@ -721,30 +748,18 @@ export default function DiscoveryPage() {
             ))}
           </div>
         </GlassCard>
-          {personas.length > 0 && allFunctionalities.length > 0 && (
-            <GlassCard title="Persona-Functionality Matrix">
-              <PersonaFunctionalityMatrix personas={personas} functionalities={allFunctionalities} />
-            </GlassCard>
-          )}
         </div>
       )}
 
       {/* ── Product Catalog View ── */}
       {viewMode === "catalog" && currentOrg && (
-        <div className="space-y-4">
-          <ProductCatalogView
-            repositories={repositories}
-            orgId={currentOrg.id}
-            selectedSegment={selectedSegment}
-            onSegmentChange={setSelectedSegment}
-            businessSegments={currentOrg.businessSegments ?? []}
-          />
-          {personas.length > 0 && allFunctionalities.length > 0 && (
-            <GlassCard title="Persona-Functionality Matrix">
-              <PersonaFunctionalityMatrix personas={personas} functionalities={allFunctionalities} />
-            </GlassCard>
-          )}
-        </div>
+        <ProductCatalogView
+          repositories={repositories}
+          orgId={currentOrg.id}
+          selectedSegment={selectedSegment}
+          onSegmentChange={setSelectedSegment}
+          businessSegments={currentOrg.businessSegments ?? []}
+        />
       )}
 
       {/* Add New Item */}

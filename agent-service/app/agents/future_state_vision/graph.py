@@ -8,6 +8,8 @@ from langgraph.graph import StateGraph
 
 from app.agents.base import AgentState, BaseAgent
 from app.agents.org_context import get_org_context, format_context_section, org_description
+from app.agents.context_output import save_agent_context_doc
+from app.agents.bm25_retrieval import bm25_rerank_for_agent
 from app.core.crypto import compute_payload_hash
 from app.core.database import db_pool
 from app.services.claude_client import claude_client
@@ -89,7 +91,11 @@ async def envision_future_capabilities(state: AgentState) -> dict[str, Any]:
     selected_products = state.get("selected_products", [])
     input_data = state.get("input_data", {})
     org = get_org_context(input_data)
-    ctx = format_context_section(input_data)
+    input_data = bm25_rerank_for_agent(
+        input_data,
+        "AI automation ROI transformation case study agentification RPA efficiency gains"
+    )
+    ctx = format_context_section(input_data, agent_type="future_state_vision")
 
     vision_strategies = input_data.get("vision_strategies", [])
 
@@ -137,6 +143,40 @@ async def envision_future_capabilities(state: AgentState) -> dict[str, Any]:
         for s in vision_strategies:
             strategy_emphasis += strategy_map.get(s, "")
 
+    # Build VSM benchmark grounding instruction when benchmarks are available
+    benchmark_docs = [
+        d for d in input_data.get("contextDocuments", [])
+        if d.get("category", "").upper() in ("VSM_BENCHMARKS", "TRANSFORMATION_CASE_STUDIES")
+    ]
+    benchmark_instruction = ""
+    if benchmark_docs:
+        benchmark_instruction = (
+            "\n\nIMPORTANT: Uploaded benchmark data is available in the context above. "
+            "Use it to ground your ROI estimates and projected metrics. "
+            "For each capability, generate projected_metrics with conservative/expected/optimistic "
+            "bands for process_time_hrs, wait_time_hrs, and flow_efficiency_pct based on the benchmarks. "
+            "If benchmark data shows specific figures (e.g. 'KYC PT reduced from 4h to 0.8h with RPA'), "
+            "use those as the basis for projected_metrics."
+        )
+        projected_metrics_field = (
+            "projected_metrics ({process_time_hrs: {conservative, expected, optimistic}, "
+            "wait_time_hrs: {conservative, expected, optimistic}, "
+            "flow_efficiency_pct: {conservative, expected, optimistic}, "
+            "benchmark_source: string}), "
+        )
+    else:
+        benchmark_instruction = (
+            "\n\nFor each capability, estimate projected_metrics based on typical industry benchmarks "
+            "for the transformation category (RPA typically reduces PT 40-60%, AI agents 60-80%). "
+            "Provide conservative/expected/optimistic bands."
+        )
+        projected_metrics_field = (
+            "projected_metrics ({process_time_hrs: {conservative, expected, optimistic}, "
+            "wait_time_hrs: {conservative, expected, optimistic}, "
+            "flow_efficiency_pct: {conservative, expected, optimistic}, "
+            "benchmark_source: 'industry_estimate'}), "
+        )
+
     prompt = (
         f"Envision future-state capabilities for the following digital products "
         f"in {org_description(org)}:\n\n"
@@ -144,6 +184,7 @@ async def envision_future_capabilities(state: AgentState) -> dict[str, Any]:
         f"{ctx}"
         f"{strategy_emphasis}"
         f"{categories_section}\n"
+        f"{benchmark_instruction}\n"
         f"Return a JSON array of future capabilities, each with:\n"
         f"product_name, product_id, "
         f"capabilities (list of {{"
@@ -152,6 +193,7 @@ async def envision_future_capabilities(state: AgentState) -> dict[str, Any]:
         f"business_impact (HIGH | MEDIUM | LOW), "
         f"implementation_complexity (HIGH | MEDIUM | LOW), "
         f"estimated_roi_pct (float), "
+        f"{projected_metrics_field}"
         f"prerequisites (list of strings), "
         f"technology_stack (list of strings)"
         f"}})."
@@ -357,15 +399,30 @@ async def persist_vision(state: AgentState) -> dict[str, Any]:
     flattened_capabilities = []
     for cap_entry in future_capabilities:
         for cap in cap_entry.get("capabilities", []):
-            flattened_capabilities.append({
+            entry: dict[str, Any] = {
                 "name": cap.get("name", ""),
                 "category": cap.get("category", ""),
                 "description": cap.get("description", ""),
                 "businessImpact": cap.get("business_impact", cap.get("businessImpact", "MEDIUM")),
                 "complexity": cap.get("implementation_complexity", cap.get("complexity", "MEDIUM")),
+                "estimated_roi_pct": cap.get("estimated_roi_pct"),
                 "product_name": cap_entry.get("product_name", ""),
                 "product_id": cap_entry.get("product_id", ""),
-            })
+            }
+            # Preserve benchmark-grounded projected_metrics so downstream agents and KB can use them
+            if cap.get("projected_metrics"):
+                entry["projected_metrics"] = cap["projected_metrics"]
+            flattened_capabilities.append(entry)
+
+    # Auto-save output as AGENT_OUTPUT ContextDocument for cross-agent chaining
+    org_id = str(input_data.get("organization", {}).get("id", ""))
+    org_name = input_data.get("organization", {}).get("name", "Enterprise")
+    if org_id:
+        await save_agent_context_doc(
+            "future_state_vision", org_id, org_name,
+            {"capabilities": flattened_capabilities, "future_value_streams": future_value_streams,
+             "products_count": len(selected_products)},
+        )
 
     return {
         "results": {

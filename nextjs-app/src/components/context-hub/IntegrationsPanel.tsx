@@ -108,6 +108,7 @@ export default function IntegrationsPanel({ orgId }: IntegrationsPanelProps) {
   const [formError, setFormError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<Record<string, string>>({});
   const [testResults, setTestResults] = useState<Record<string, { connected: boolean; error?: string }>>({});
+  const [syncResults, setSyncResults] = useState<Record<string, { syncedItems: number; chunksIndexed: number }>>({});
 
   const fetchIntegrations = useCallback(async () => {
     try {
@@ -178,6 +179,10 @@ export default function IntegrationsPanel({ orgId }: IntegrationsPanelProps) {
           )
         );
       } else {
+        setSyncResults((prev) => ({
+          ...prev,
+          [id]: { syncedItems: data.syncedItems ?? 0, chunksIndexed: data.chunksIndexed ?? 0 },
+        }));
         // Refresh from server
         await fetchIntegrations();
       }
@@ -364,13 +369,31 @@ export default function IntegrationsPanel({ orgId }: IntegrationsPanelProps) {
       )}
 
       {/* How it works */}
-      <div className="glass-panel-sm p-4 border border-white/5 text-xs text-white/40 space-y-1">
+      <div className="glass-panel-sm p-4 border border-white/5 text-xs text-white/40 space-y-2">
         <p className="font-medium text-white/60">How integration data reaches agents</p>
         <p>
-          After syncing, fetched items (issues, pages, work items) are saved as <strong className="text-white/60">Context Documents</strong> with
-          category <code className="text-cyan-400/80">integration</code>. All 18 AI agents automatically read context documents before
-          generating output — so your Jira issues, Confluence pages, or ServiceNow tickets will directly
-          inform discovery, capability mapping, and future-state suggestions.
+          After syncing, fetched items are saved as <strong className="text-white/60">Context Documents</strong>,
+          chunked, and embedded for semantic search. All 18 AI agents automatically retrieve relevant
+          chunks before generating output.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+          <div className="bg-white/3 rounded p-2 space-y-0.5">
+            <p className="font-medium text-blue-400/80">Jira / Azure DevOps</p>
+            <p>Epic → <span className="text-white/60">L2: Capability</span></p>
+            <p>Feature / Story → <span className="text-white/60">L3: Functionality</span></p>
+            <p>Component / Area Path → <span className="text-white/60">L0: Product Group</span></p>
+            <p>Project → <span className="text-white/60">L1: Product</span></p>
+          </div>
+          <div className="bg-white/3 rounded p-2 space-y-0.5">
+            <p className="font-medium text-cyan-400/80">Confluence / Notion</p>
+            <p>Pages → <span className="text-white/60">Process & capability context</span></p>
+            <p className="font-medium text-green-400/80 mt-1">ServiceNow</p>
+            <p>Requests → <span className="text-white/60">Service catalogue context</span></p>
+          </div>
+        </div>
+        <p className="pt-1">
+          The Discovery agent gives synced integration data <strong className="text-white/60">28% of its context budget</strong> and
+          explicitly maps Jira/ADO labels to the L0–L3 hierarchy when building capabilities.
         </p>
       </div>
 
@@ -389,6 +412,7 @@ export default function IntegrationsPanel({ orgId }: IntegrationsPanelProps) {
             const isBusy = !!actionLoading[integration.id];
             const testResult = testResults[integration.id];
             const isTesting = !!actionLoading[integration.id + "_test"];
+            const syncResult = syncResults[integration.id];
 
             return (
               <div key={integration.id} className="glass-panel p-5 space-y-3">
@@ -460,6 +484,15 @@ export default function IntegrationsPanel({ orgId }: IntegrationsPanelProps) {
                 {integration.errorMessage && (
                   <p className="text-xs text-red-400/80 bg-red-500/5 border border-red-500/10 rounded px-3 py-2">
                     {integration.errorMessage}
+                  </p>
+                )}
+
+                {/* Sync result */}
+                {syncResult && integration.status === "synced" && (
+                  <p className="text-xs rounded px-3 py-2 border text-green-400 bg-green-500/5 border-green-500/10">
+                    Synced {syncResult.syncedItems} items →{" "}
+                    <span className="text-cyan-400">{syncResult.chunksIndexed} chunks indexed</span>
+                    {" "}(available to all agents via semantic search)
                   </p>
                 )}
 

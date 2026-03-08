@@ -64,6 +64,7 @@ from app.agents.org_context import (
     format_personas,
     org_description,
 )
+from app.agents.context_output import save_agent_context_doc
 from app.services.claude_client import claude_client
 
 logger = logging.getLogger(__name__)
@@ -316,7 +317,7 @@ async def parse_codebase(state: AgentState) -> dict[str, Any]:
     """Analyze codebase structure — enhanced with enrichment data."""
     input_data = state["input_data"]
     org = get_org_context(input_data)
-    ctx = format_context_section(input_data)
+    ctx = format_context_section(input_data, agent_type="discovery")
     repos_list = input_data.get("repositories", [])
     enrichment: dict = input_data.get("enrichment", {})
 
@@ -379,7 +380,7 @@ async def extract_functionalities(state: AgentState) -> dict[str, Any]:
     """Identify business functionalities — seeded from OpenAPI endpoints + test file names."""
     input_data = state["input_data"]
     org = get_org_context(input_data)
-    ctx = format_context_section(input_data)
+    ctx = format_context_section(input_data, agent_type="discovery")
     parsed = input_data.get("parsed_codebase", {})
     enrichment: dict = input_data.get("enrichment", {})
     active_sources: list[str] = enrichment.get("active_sources", ["url_analysis"])
@@ -580,8 +581,25 @@ async def cluster_bmad(state: AgentState) -> dict[str, Any]:
             '"groups": [{"id": string, "name": string, "steps": [{"id": string, "name": string, "description": string, "order": int}]}]}]}'
         )
 
+    ctx = format_context_section(input_data, agent_type="discovery")
+
+    # If integration data (Jira/ADO) is present, instruct the LLM to honour the
+    # explicit L2/L3 labels we embedded in the synced content.
+    integration_hint = ""
+    if any(d.get("category") == "integration" for d in input_data.get("contextDocuments", [])):
+        integration_hint = (
+            "\n\nIMPORTANT — External Integration Data is available in the context above.\n"
+            "Use the hierarchy labels as authoritative sources for capability naming:\n"
+            "• Items labelled [L2: Capability] → use these names as L2 Digital Capability names\n"
+            "• Items labelled [L3: Functionality] → use these names as L3 Functionality names\n"
+            "• Jira COMPONENT / ADO AREA PATH → use as L0 Product Group signals\n"
+            "• Jira PROJECT / ADO PROJECT → use as L1 Product name\n"
+            "Prefer integration-sourced names over generic inferred names when they match.\n"
+        )
+
     prompt = (
         f"Cluster into the BMAD product hierarchy for {org_description(org)}.\n"
+        f"{ctx}{integration_hint}\n"
         f"{depth_instruction}{constraint_ctx}\n\n"
         f"Business functionalities to cluster:\n{json.dumps(functionalities, indent=2)}\n\n"
         f"Return JSON in this exact format:\n{return_format}"
@@ -915,6 +933,20 @@ async def persist_results(state: AgentState) -> dict[str, Any]:
     products_summary = [
         {"id": v, "name": k} for k, v in product_id_map.items() if k != "_default"
     ] if pass_number == 1 else []
+
+    # Auto-save discovery output as AGENT_OUTPUT ContextDocument
+    org = input_data.get("organization", {})
+    org_id = str(org.get("id", ""))
+    org_name = org.get("name", "Enterprise")
+    if org_id and pass_number in (0, 3):
+        await save_agent_context_doc(
+            "discovery", org_id, org_name,
+            {"products_count": len(product_id_map),
+             "capabilities_count": len(cap_id_map),
+             "functionalities_count": len(func_id_map),
+             "business_segment": input_data.get("businessSegment", ""),
+             "products_created": [{"name": k} for k in product_id_map if k != "_default"]},
+        )
 
     return {
         "results": {

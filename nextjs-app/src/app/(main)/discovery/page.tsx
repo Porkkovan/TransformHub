@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import GlassCard from "@/components/ui/GlassCard";
 import GlassBadge from "@/components/ui/GlassBadge";
@@ -53,6 +53,31 @@ export default function DiscoveryPage() {
   // Stored input for re-use on passes 2 and 3
   const [savedDiscoveryInput, setSavedDiscoveryInput] = useState<DiscoveryInputData | null>(null);
   const [savedRepoId, setSavedRepoId] = useState<string | null>(null);
+
+  // Track which execution IDs have already been processed so we don't call handleExecutionComplete twice
+  const processedExecutionIds = useRef<Set<string>>(new Set());
+
+  // ── Inline edit/delete for multi-pass review ──────────────────────────────
+  const handleDeleteItem = async (
+    entityType: "digital-products" | "digital-capabilities" | "functionalities",
+    id: string
+  ) => {
+    await fetch(`/api/${entityType}/${id}`, { method: "DELETE" });
+    refetch();
+  };
+
+  const handleRenameItem = async (
+    entityType: "digital-products" | "digital-capabilities" | "functionalities",
+    id: string,
+    name: string
+  ) => {
+    await fetch(`/api/${entityType}/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    refetch();
+  };
 
   const toggleExpand = (id: string) =>
     setTreeExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -149,6 +174,19 @@ export default function DiscoveryPage() {
     }
     refetch();
   };
+
+  // ── Auto-advance multi-pass state when execution completes ───────────────
+  useEffect(() => {
+    if (!multiPassMode) return;
+    if (!execution) return;
+    if (execution.status !== "COMPLETED") return;
+    if (!execution.output) return;
+    const execId = execution.execution_id;
+    if (processedExecutionIds.current.has(execId)) return;
+    processedExecutionIds.current.add(execId);
+    handleExecutionComplete(execution.output as Record<string, unknown>);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [execution?.status, execution?.output, multiPassMode]);
 
   // ── Multi-pass approval handlers ─────────────────────────────────────────
   const handleApprovePass1 = async () => {
@@ -423,11 +461,35 @@ export default function DiscoveryPage() {
                 pass1Status={pass1Status}
                 pass2Status={pass2Status}
                 pass3Status={pass3Status}
-                pass1Result={pass1Result}
-                pass2Result={pass2Result}
-                pass3Result={pass3Result}
+                pass1Result={pass1Result ? {
+                  ...pass1Result,
+                  // Populate live product items for inline review
+                  products: allProductsFlat.map((p) => ({
+                    id: p.id, name: p.name, description: p.description,
+                    confidence: p.confidence ?? undefined, sources: p.sources,
+                  })),
+                } : undefined}
+                pass2Result={pass2Result ? {
+                  ...pass2Result,
+                  // Populate live capability items for inline review
+                  capabilities: repositories.flatMap((repo) =>
+                    (repo.digitalProducts ?? []).flatMap((prod) =>
+                      (prod.digitalCapabilities ?? []).map((cap) => ({
+                        id: cap.id, name: cap.name, description: cap.description,
+                        confidence: cap.confidence ?? undefined, sources: cap.sources,
+                      }))
+                    )
+                  ),
+                } : undefined}
+                pass3Result={pass3Result ? {
+                  ...pass3Result,
+                  // Populate live functionality items for inline review
+                  functionalities: allFunctionalities.map((f) => ({ id: f.id, name: f.name })),
+                } : undefined}
                 onApprovePass1={handleApprovePass1}
                 onApprovePass2={handleApprovePass2}
+                onDeleteItem={handleDeleteItem}
+                onRenameItem={handleRenameItem}
                 loading={loading}
               />
             </GlassCard>

@@ -23,10 +23,24 @@ export async function PATCH(
 
     return NextResponse.json(updated);
   } catch (error) {
+    if (error instanceof Response) return error;
     console.error("Failed to update digital product:", error);
-    return NextResponse.json(
-      { error: "Failed to update digital product" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to update digital product" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await requireAuth();
+    const { id } = await params;
+    await prisma.digitalProduct.delete({ where: { id } });
+    return NextResponse.json({ deleted: true });
+  } catch (error) {
+    if (error instanceof Response) return error;
+    console.error("Failed to delete digital product:", error);
+    return NextResponse.json({ error: "Failed to delete digital product" }, { status: 500 });
   }
 }

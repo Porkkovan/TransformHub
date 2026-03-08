@@ -10,6 +10,7 @@ from app.agents.base import AgentState, BaseAgent
 from app.core.crypto import compute_payload_hash
 from app.core.database import db_pool
 from app.agents.org_context import get_org_context, format_context_section, format_frameworks, org_description
+from app.agents.bm25_retrieval import bm25_rerank_for_agent
 from app.services.claude_client import claude_client
 
 logger = logging.getLogger(__name__)
@@ -100,8 +101,13 @@ async def load_context(state: AgentState) -> dict[str, Any]:
 
 async def map_regulations(state: AgentState) -> dict[str, Any]:
     """Map entities to FINRA/SEC/GDPR requirements."""
-    org = get_org_context(state["input_data"])
-    ctx = format_context_section(state["input_data"])
+    input_data = bm25_rerank_for_agent(
+        state["input_data"],
+        "regulatory compliance GDPR FINRA SOX risk assessment data privacy framework requirement",
+    )
+    state = {**state, "input_data": input_data}
+    org = get_org_context(input_data)
+    ctx = format_context_section(input_data, agent_type="risk_compliance")
     context = state.get("context", {})
 
     prompt = (
@@ -329,19 +335,17 @@ async def persist_risk(state: AgentState) -> dict[str, Any]:
             entity_name = score_entry.get("entity_name", "")
             entity_type_raw = score_entry.get("entity_type", "capability")
 
-            # Resolve entity_id by name as fallback
+            # Resolve entity_id by name — try exact then ILIKE fuzzy match
             resolved_id = None
             if entity_name:
-                if entity_type_raw.lower() in ("capability", "digitalcapability"):
-                    row = await db_pool.fetchrow(
-                        "SELECT id FROM digital_capabilities WHERE name = $1 LIMIT 1",
-                        entity_name,
-                    )
-                else:
-                    row = await db_pool.fetchrow(
-                        "SELECT id FROM digital_products WHERE name = $1 LIMIT 1",
-                        entity_name,
-                    )
+                table = "digital_capabilities" if entity_type_raw.lower() in ("capability", "digitalcapability") else "digital_products"
+                row = await db_pool.fetchrow(f"SELECT id FROM {table} WHERE name = $1 LIMIT 1", entity_name)
+                if not row:
+                    row = await db_pool.fetchrow(f"SELECT id FROM {table} WHERE name ILIKE $1 LIMIT 1", f"%{entity_name}%")
+                if not row:
+                    # Strip common suffixes/prefixes and try again
+                    short = entity_name.split("(")[0].strip()
+                    row = await db_pool.fetchrow(f"SELECT id FROM {table} WHERE name ILIKE $1 LIMIT 1", f"%{short}%")
                 if row:
                     resolved_id = str(row["id"])
 
@@ -374,19 +378,16 @@ async def persist_risk(state: AgentState) -> dict[str, Any]:
             entity_name = mapping.get("entity_name", "")
             entity_type_raw = mapping.get("entity_type", "capability")
 
-            # Resolve entity_id by name if not provided — LLM often omits or invents IDs
+            # Resolve entity_id by name — try exact then ILIKE fuzzy match
             resolved_id = None
             if entity_name:
-                if entity_type_raw.lower() in ("capability", "digitalcapability"):
-                    row = await db_pool.fetchrow(
-                        "SELECT id FROM digital_capabilities WHERE name = $1 LIMIT 1",
-                        entity_name,
-                    )
-                else:
-                    row = await db_pool.fetchrow(
-                        "SELECT id FROM digital_products WHERE name = $1 LIMIT 1",
-                        entity_name,
-                    )
+                table = "digital_capabilities" if entity_type_raw.lower() in ("capability", "digitalcapability") else "digital_products"
+                row = await db_pool.fetchrow(f"SELECT id FROM {table} WHERE name = $1 LIMIT 1", entity_name)
+                if not row:
+                    row = await db_pool.fetchrow(f"SELECT id FROM {table} WHERE name ILIKE $1 LIMIT 1", f"%{entity_name}%")
+                if not row:
+                    short = entity_name.split("(")[0].strip()
+                    row = await db_pool.fetchrow(f"SELECT id FROM {table} WHERE name ILIKE $1 LIMIT 1", f"%{short}%")
                 if row:
                     resolved_id = str(row["id"])
 
@@ -436,6 +437,31 @@ async def persist_risk(state: AgentState) -> dict[str, Any]:
             len(regulations),
             len(audit_entries),
         )
+
+        # Confidence propagation: risk assessment confirms capability existence — boost by 0.08
+        # Only boost capabilities that have been correctly linked (resolved entity_id)
+        try:
+            if repository_id:
+                await db_pool.execute(
+                    """
+                    UPDATE digital_capabilities
+                    SET confidence = LEAST(1.0, confidence + 0.08),
+                        updated_at = NOW()
+                    WHERE id IN (
+                        SELECT DISTINCT entity_id FROM risk_assessments
+                        WHERE entity_id IN (
+                            SELECT dc.id FROM digital_capabilities dc
+                            JOIN digital_products dp ON dp.id = dc.digital_product_id
+                            WHERE dp.repository_id = $1
+                        )
+                    )
+                    AND confidence IS NOT NULL
+                    """,
+                    repository_id,
+                )
+                logger.info("Boosted confidence for risk-validated capabilities in repo %s", repository_id)
+        except Exception as boost_exc:
+            logger.warning("Confidence boost after risk failed (non-fatal): %s", boost_exc)
     except Exception as exc:
         logger.error("persist_risk failed: %s", exc)
         return {"error": str(exc)}

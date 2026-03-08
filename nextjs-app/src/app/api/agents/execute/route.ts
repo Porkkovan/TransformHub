@@ -6,26 +6,99 @@ import { executeAgentSchema, formatZodError } from "@/lib/validations";
 import { requireAuth } from "@/lib/api-auth";
 import { generateEmbedding } from "@/lib/embeddings";
 
-/** Representative search query for each agent type — used for semantic context retrieval. */
-const AGENT_CONTEXT_QUERIES: Record<string, string> = {
-  discovery: "business functionalities modules services codebase structure capabilities value stream",
-  lean_vsm: "process steps workflow value stream lead time process time bottleneck waste automation",
-  risk_compliance: "risk assessment regulatory compliance GDPR data privacy operational risk audit",
-  future_state_vision: "future state automation agentification AI transformation digital capabilities roadmap",
-  product_transformation: "digital product transformation readiness migration plan current state architecture",
-  architecture: "system architecture microservices API integration technical debt current state target state",
-  market_intelligence: "market trends competitor analysis industry benchmark competitive intelligence",
-  skill_gap: "skills gap team capabilities training needs talent workforce technology skills",
-  backlog_okr: "product backlog OKRs objectives key results sprint features user stories",
-  change_impact: "change impact organizational change stakeholder communication change management",
-  cost_estimation: "cost estimation budget resource planning ROI financial investment benefit",
-  data_governance: "data governance data quality data lineage master data privacy compliance",
-  documentation: "technical documentation API specification code documentation process guide",
-  fiduciary: "fiduciary duty investment management financial obligations regulatory compliance",
-  git_integration: "git repository code analysis dependencies technical stack version control",
-  monitoring: "KPIs metrics monitoring dashboards performance indicators SLAs observability",
-  security: "security vulnerabilities threat analysis cybersecurity OWASP penetration testing",
-  testing_validation: "testing strategy QA validation test cases quality assurance test coverage",
+/**
+ * Multi-query expansion per agent type for hybrid semantic retrieval.
+ * Running multiple queries and unioning results dramatically improves recall
+ * for uploaded benchmark docs, case studies, and prior agent outputs.
+ */
+const AGENT_CONTEXT_QUERIES: Record<string, string[]> = {
+  discovery: [
+    "business functionalities modules services codebase structure capabilities value stream",
+    "application architecture microservices domain modules current state",
+    "digital product capabilities L1 L2 L3 hierarchy product group",
+    "Jira epics capabilities features functionalities product hierarchy L2 L3",
+    "Azure DevOps epics features user stories area path product group capabilities",
+  ],
+  lean_vsm: [
+    "process steps workflow value stream lead time process time bottleneck waste automation",
+    "VSM benchmarks industry process time wait time flow efficiency standards",
+    "lean six sigma process improvement bottleneck elimination throughput",
+    "process time wait time lead time flow efficiency automation ROI",
+  ],
+  risk_compliance: [
+    "risk assessment regulatory compliance GDPR data privacy operational risk audit",
+    "compliance framework regulatory requirements industry standards",
+    "risk register threat assessment mitigation controls",
+  ],
+  future_state_vision: [
+    "future state automation agentification AI transformation digital capabilities roadmap",
+    "AI automation ROI case study transformation results banking healthcare retail",
+    "RPA artificial intelligence agent-based automation business process improvement metrics",
+    "digital transformation case study efficiency gains before after automation",
+    "VSM benchmarks industry process improvement automation future state targets",
+  ],
+  product_transformation: [
+    "digital product transformation readiness migration plan current state architecture",
+    "transformation plan prerequisites steps timeline dependencies",
+    "readiness assessment digital maturity transformation blockers",
+    "prior discovery VSM risk assessment agent output analysis",
+  ],
+  architecture: [
+    "system architecture microservices API integration technical debt current state target state",
+    "cloud architecture patterns event-driven CQRS domain-driven design",
+    "technical stack technology choices integration patterns",
+  ],
+  market_intelligence: [
+    "market trends competitor analysis industry benchmark competitive intelligence",
+    "industry report digital transformation trends technology adoption",
+    "competitor capabilities market positioning digital strategy",
+  ],
+  skill_gap: [
+    "skills gap team capabilities training needs talent workforce technology skills",
+    "AI ML cloud DevOps skills training certification workforce development",
+  ],
+  backlog_okr: [
+    "product backlog OKRs objectives key results sprint features user stories",
+    "prior agent analysis future state discovery VSM results",
+    "product roadmap priorities transformation initiatives capabilities",
+  ],
+  change_impact: [
+    "change impact organizational change stakeholder communication change management",
+    "change readiness adoption resistance stakeholder engagement",
+  ],
+  cost_estimation: [
+    "cost estimation budget resource planning ROI financial investment benefit",
+    "transformation cost implementation timeline resource requirements",
+    "ROI case study financial benefit automation digital transformation",
+  ],
+  data_governance: [
+    "data governance data quality data lineage master data privacy compliance",
+    "data management policies data catalog metadata governance framework",
+  ],
+  documentation: [
+    "technical documentation API specification code documentation process guide",
+    "process documentation SOPs workflow guides user manuals",
+  ],
+  fiduciary: [
+    "fiduciary duty investment management financial obligations regulatory compliance",
+    "financial services regulatory requirements investment governance",
+  ],
+  git_integration: [
+    "git repository code analysis dependencies technical stack version control",
+    "code repository structure modules services technical analysis",
+  ],
+  monitoring: [
+    "KPIs metrics monitoring dashboards performance indicators SLAs observability",
+    "performance benchmarks industry KPIs digital transformation metrics",
+  ],
+  security: [
+    "security vulnerabilities threat analysis cybersecurity OWASP penetration testing",
+    "security framework controls zero trust data protection",
+  ],
+  testing_validation: [
+    "testing strategy QA validation test cases quality assurance test coverage",
+    "test automation quality benchmarks coverage standards",
+  ],
 };
 
 export async function POST(request: NextRequest) {
@@ -91,26 +164,26 @@ export async function POST(request: NextRequest) {
       : organizationId || null;
 
     if (orgId) {
-      // Build a query string from the agent type for semantic retrieval
-      const contextQuery = AGENT_CONTEXT_QUERIES[agentType] ?? agentType.replace(/_/g, " ");
-      const queryEmbedding = await generateEmbedding(contextQuery);
+      // Multi-query semantic retrieval: run all queries for the agent type,
+      // union results (deduplicated by content), keep top 25 most-cited chunks.
+      const queryList = AGENT_CONTEXT_QUERIES[agentType]
+        ?? [agentType.replace(/_/g, " ")];
 
-      let contextDocuments: Array<{
+      interface VectorRow {
         content: string;
-        source: string;
+        file_name: string;
         category: string;
-        subCategory: string | null;
-      }> = [];
+        sub_category: string | null;
+      }
 
-      if (queryEmbedding) {
-        // Semantic search: find the 20 most relevant chunks via pgvector cosine similarity
+      type DocEntry = { content: string; source: string; category: string; subCategory: string | null; hits: number };
+      const docMap = new Map<string, DocEntry>();
+
+      for (const query of queryList) {
+        const queryEmbedding = await generateEmbedding(query);
+        if (!queryEmbedding) continue;
+
         const vectorStr = `[${queryEmbedding.join(",")}]`;
-        interface VectorRow {
-          content: string;
-          file_name: string;
-          category: string;
-          sub_category: string | null;
-        }
         const rows = await prisma.$queryRawUnsafe<VectorRow[]>(`
           SELECT
             ce.content,
@@ -122,23 +195,40 @@ export async function POST(request: NextRequest) {
           WHERE ce.organization_id = $1
             AND ce.embedding IS NOT NULL
           ORDER BY ce.embedding <=> '${vectorStr}'::vector
-          LIMIT 20
+          LIMIT 50
         `, orgId);
 
-        contextDocuments = rows.map((r) => ({
-          content: r.content,
-          source: r.file_name,
-          category: r.category,
-          subCategory: r.sub_category,
-        }));
+        for (const r of rows) {
+          // Deduplicate by content fingerprint (first 120 chars)
+          const key = r.content.slice(0, 120);
+          const existing = docMap.get(key);
+          if (existing) {
+            existing.hits += 1;
+          } else {
+            docMap.set(key, {
+              content: r.content,
+              source: r.file_name,
+              category: r.category,
+              subCategory: r.sub_category,
+              hits: 1,
+            });
+          }
+        }
       }
 
-      // Fallback: if no embeddings available (OPENAI_API_KEY not set and Azure not configured),
-      // use the 20 most recently added chunks so agents still get some context.
+      // Sort by hit count (chunks appearing in multiple query results rank higher),
+      // then take top 25 for injection.
+      let contextDocuments: Array<{ content: string; source: string; category: string; subCategory: string | null }> =
+        Array.from(docMap.values())
+          .sort((a, b) => b.hits - a.hits)
+          .slice(0, 25)
+          .map(({ content, source, category, subCategory }) => ({ content, source, category, subCategory }));
+
+      // Fallback: no embeddings available — use 25 most recently indexed chunks.
       if (contextDocuments.length === 0) {
         const recentChunks = await prisma.contextEmbedding.findMany({
           where: { organizationId: orgId },
-          take: 20,
+          take: 25,
           orderBy: { createdAt: "desc" },
           include: {
             contextDocument: {

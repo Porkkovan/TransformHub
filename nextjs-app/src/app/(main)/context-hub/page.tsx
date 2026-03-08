@@ -29,7 +29,12 @@ const categoryFilterOptions = [
   { value: "CURRENT_STATE", label: "Current State" },
   { value: "FUTURE_STATE", label: "Future State" },
   { value: "COMPETITOR", label: "Competitor" },
-  { value: "TECH_TREND", label: "Tech Trend" },
+  { value: "VSM_BENCHMARKS", label: "VSM Benchmarks" },
+  { value: "TRANSFORMATION_CASE_STUDIES", label: "Transformation Case Studies" },
+  { value: "ARCHITECTURE_STANDARDS", label: "Architecture Standards" },
+  { value: "COMPETITOR", label: "Competitor Intelligence" },
+  { value: "TECH_TREND", label: "Tech Trends" },
+  { value: "AGENT_OUTPUT", label: "Agent Output (System)" },
 ];
 
 export default function ContextHubPage() {
@@ -88,6 +93,7 @@ export default function ContextHubPage() {
       {activeTab === "documents" && (
         <div className="space-y-4">
           <DocumentUploadArea
+            organizationId={currentOrg?.id}
             onUpload={uploadDocument}
             actionLoading={docsActionLoading}
           />

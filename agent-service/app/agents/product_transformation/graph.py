@@ -10,6 +10,7 @@ from app.agents.base import AgentState, BaseAgent
 from app.core.crypto import compute_payload_hash
 from app.core.database import db_pool
 from app.agents.org_context import get_org_context, format_context_section, org_description
+from app.agents.bm25_retrieval import bm25_rerank_for_agent
 from app.services.claude_client import claude_client
 
 logger = logging.getLogger(__name__)
@@ -101,8 +102,12 @@ async def load_product_context(state: AgentState) -> dict[str, Any]:
 
 async def assess_readiness(state: AgentState) -> dict[str, Any]:
     """Score transformation readiness (0-10) per product based on risks, metrics, compliance."""
-    org = get_org_context(state["input_data"])
-    ctx = format_context_section(state["input_data"])
+    input_data = bm25_rerank_for_agent(
+        state["input_data"],
+        "transformation readiness digital product roadmap RICE score risk compliance VSM flow efficiency agile modernisation",
+    )
+    org = get_org_context(input_data)
+    ctx = format_context_section(input_data, agent_type="product_transformation")
     product_context = state.get("product_context", {})
 
     prompt = (

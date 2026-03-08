@@ -43,7 +43,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate category
-    const validCategories = ["CURRENT_STATE", "FUTURE_STATE", "COMPETITOR", "TECH_TREND"];
+    const validCategories = [
+      "CURRENT_STATE", "FUTURE_STATE", "COMPETITOR", "TECH_TREND",
+      "VSM_BENCHMARKS", "TRANSFORMATION_CASE_STUDIES", "ARCHITECTURE_STANDARDS", "AGENT_OUTPUT",
+    ];
     if (!validCategories.includes(category)) {
       return NextResponse.json(
         { error: `Invalid category. Must be one of: ${validCategories.join(", ")}` },

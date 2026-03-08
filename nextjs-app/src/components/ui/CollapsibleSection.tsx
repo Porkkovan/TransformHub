@@ -33,9 +33,12 @@ export default function CollapsibleSection({
 
   return (
     <div className={`glass-panel-sm rounded-xl overflow-hidden ${className}`}>
-      <button
+      <div
+        role="button"
+        tabIndex={0}
         onClick={handleClick}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors"
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleClick(); }}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors cursor-pointer"
       >
         <div className="flex items-center gap-2">
           <svg
@@ -49,7 +52,7 @@ export default function CollapsibleSection({
           <span className="text-sm font-medium text-white/90">{title}</span>
           {badge}
         </div>
-      </button>
+      </div>
       {effectivelyOpen && <div className="px-4 pb-4">{children}</div>}
     </div>
   );

@@ -8,6 +8,8 @@ from langgraph.graph import StateGraph
 from app.agents.base import AgentState, BaseAgent
 from app.core.database import db_pool
 from app.agents.org_context import get_org_context, format_context_section, org_description
+from app.agents.context_output import save_agent_context_doc
+from app.agents.bm25_retrieval import bm25_rerank_for_agent
 from app.services.claude_client import claude_client
 
 logger = logging.getLogger(__name__)
@@ -133,7 +135,11 @@ async def load_capabilities(state: AgentState) -> dict[str, Any]:
 async def analyze_flow(state: AgentState) -> dict[str, Any]:
     """Call Claude to analyze the value stream flow for each capability."""
     org = get_org_context(state["input_data"])
-    ctx = format_context_section(state["input_data"])
+    state["input_data"] = bm25_rerank_for_agent(
+        state["input_data"],
+        "process time wait time lead time flow efficiency bottleneck VSM benchmarks lean waste"
+    )
+    ctx = format_context_section(state["input_data"], agent_type="lean_vsm")
     capabilities_data = state.get("capabilities_data", [])
 
     prompt = (
@@ -303,9 +309,45 @@ async def persist_vsm(state: AgentState) -> dict[str, Any]:
             )
 
         logger.info("VSM metrics persisted for repository %s", repository_id)
+
+        # Confidence propagation: VSM confirmation validates discovery — boost capability confidence
+        # Each capability that gets a VSM metric is confirmed to exist; raise its confidence by 0.10
+        try:
+            await db_pool.execute(
+                """
+                UPDATE digital_capabilities
+                SET confidence = LEAST(1.0, confidence + 0.10),
+                    updated_at = NOW()
+                WHERE id IN (
+                    SELECT digital_capability_id FROM vsm_metrics
+                    WHERE digital_capability_id IN (
+                        SELECT dc.id FROM digital_capabilities dc
+                        JOIN digital_products dp ON dp.id = dc.digital_product_id
+                        WHERE dp.repository_id = $1
+                    )
+                )
+                AND confidence IS NOT NULL
+                """,
+                repository_id,
+            )
+            logger.info("Boosted confidence for VSM-validated capabilities in repo %s", repository_id)
+        except Exception as boost_exc:
+            logger.warning("Confidence boost after VSM failed (non-fatal): %s", boost_exc)
     except Exception as exc:
         logger.error("persist_vsm failed: %s", exc)
         return {"error": str(exc)}
+
+    # Auto-save VSM output for cross-agent chaining
+    org = state["input_data"].get("organization", {})
+    org_id = str(org.get("id", ""))
+    org_name = org.get("name", "Enterprise")
+    if org_id:
+        caps = metrics.get("capabilities", [])
+        await save_agent_context_doc(
+            "lean_vsm", org_id, org_name,
+            {"capabilities_count": len(caps), "metrics": caps[:20],
+             "product_name": state["input_data"].get("product_name", "")},
+        )
 
     return {
         "results": {

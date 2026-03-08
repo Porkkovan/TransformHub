@@ -125,13 +125,13 @@ interface TextChunk {
 /**
  * Splits text into overlapping chunks for embedding/indexing.
  * For structured spreadsheet text, tries to keep rows together.
- * Default: 1000 chars per chunk, 200 char overlap.
+ * Default: 2000 chars per chunk, 400 char overlap.
  */
 export function chunkText(
   text: string,
   source: string,
-  chunkSize = 1000,
-  overlap = 200
+  chunkSize = 2000,
+  overlap = 400
 ): TextChunk[] {
   const chunks: TextChunk[] = [];
 

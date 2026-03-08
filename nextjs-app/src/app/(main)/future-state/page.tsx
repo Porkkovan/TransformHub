@@ -31,6 +31,14 @@ import {
 // ── Types ──────────────────────────────────────────────────────────────────────
 type StrategyKey = "automation" | "agentification";
 
+interface ProjectedBand { conservative?: number; expected?: number; optimistic?: number }
+interface AgentProjectedMetrics {
+  process_time_hrs?: ProjectedBand;
+  wait_time_hrs?: ProjectedBand;
+  flow_efficiency_pct?: ProjectedBand;
+  benchmark_source?: string;
+}
+
 interface AgentCap {
   name: string;
   category?: string;
@@ -39,6 +47,7 @@ interface AgentCap {
   complexity?: string;
   riceScore?: number;
   product_name?: string;
+  projected_metrics?: AgentProjectedMetrics | null;
 }
 
 interface CapMeta {
@@ -86,7 +95,7 @@ const VISION_TABS: Array<{
 
 // ── Projection helpers ─────────────────────────────────────────────────────────
 
-/** PT and WT reduction multipliers by category (realistic enterprise estimates). */
+/** PT and WT reduction multipliers by category — used as FALLBACK when agent has no projected_metrics. */
 function getCategoryMultipliers(category?: string): [number, number] {
   switch (category) {
     case "RPA_AUTOMATION":      return [0.55, 0.35];
@@ -98,18 +107,54 @@ function getCategoryMultipliers(category?: string): [number, number] {
   }
 }
 
-function projectCapMetrics(pt: number, wt: number, category?: string): Projected {
-  const [ptMult, wtMult] = getCategoryMultipliers(category);
-  const futurePt = pt * ptMult;
-  const futureWt = wt * wtMult;
+/**
+ * Project future metrics for a capability.
+ * Prefers agent-provided projected_metrics (grounded in uploaded benchmarks).
+ * Falls back to hardcoded category multipliers when agent data is absent.
+ */
+function projectCapMetrics(
+  pt: number,
+  wt: number,
+  category?: string,
+  agentProjected?: {
+    process_time_hrs?: { expected?: number };
+    wait_time_hrs?: { expected?: number };
+    flow_efficiency_pct?: { expected?: number };
+    benchmark_source?: string;
+  } | null,
+): Projected & { benchmarkGrounded?: boolean; benchmarkSource?: string } {
+  let futurePt: number;
+  let futureWt: number;
+  let benchmarkGrounded = false;
+  let benchmarkSource: string | undefined;
+
+  if (
+    agentProjected?.process_time_hrs?.expected != null &&
+    agentProjected?.wait_time_hrs?.expected != null
+  ) {
+    // Use agent-generated benchmark-grounded projections
+    futurePt = agentProjected.process_time_hrs.expected;
+    futureWt = agentProjected.wait_time_hrs.expected;
+    benchmarkGrounded = true;
+    benchmarkSource = agentProjected.benchmark_source;
+  } else {
+    // Fallback: generic multipliers
+    const [ptMult, wtMult] = getCategoryMultipliers(category);
+    futurePt = pt * ptMult;
+    futureWt = wt * wtMult;
+  }
+
   const currentLt = pt + wt || 1;
   const futureLt = futurePt + futureWt || 1;
   return {
     pt: futurePt, wt: futureWt, fe: (futurePt / futureLt) * 100,
-    ptSavePct: (1 - ptMult) * 100, wtSavePct: (1 - wtMult) * 100,
+    ptSavePct: ((pt - futurePt) / (pt || 1)) * 100,
+    wtSavePct: ((wt - futureWt) / (wt || 1)) * 100,
     ltSavePct: ((currentLt - futureLt) / currentLt) * 100,
     ptSaveHrs: pt - futurePt, wtSaveHrs: wt - futureWt, ltSaveHrs: currentLt - futureLt,
     feGain: (futurePt / futureLt) * 100 - (pt / currentLt) * 100,
+    benchmarkGrounded,
+    benchmarkSource,
   };
 }
 
@@ -420,7 +465,9 @@ function FutureCapRow({
   const [open, setOpen] = useState(false);
   const colors = feColors(current.fe);
   const effectiveCategory = agentCap?.category ?? fallbackCategory;
-  const proj = current.hasData ? projectCapMetrics(current.pt, current.wt, effectiveCategory) : null;
+  const proj = current.hasData
+    ? projectCapMetrics(current.pt, current.wt, effectiveCategory, agentCap?.projected_metrics)
+    : null;
   const futureFuncs = useMemo(
     () => buildFutureFunctionalities(current.functionalities, effectiveCategory),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -482,21 +529,31 @@ function FutureCapRow({
               </div>
               {/* Projected metrics */}
               {proj && (
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  <div className="glass-panel-sm rounded-lg p-1.5 text-center">
-                    <p className="text-[9px] text-white/30 uppercase">PT</p>
-                    <p className="text-xs font-bold text-green-400">{proj.pt.toFixed(1)}h</p>
-                    <p className="text-[9px] text-green-400/60">↓{proj.ptSavePct.toFixed(0)}%</p>
-                  </div>
-                  <div className="glass-panel-sm rounded-lg p-1.5 text-center">
-                    <p className="text-[9px] text-white/30 uppercase">WT</p>
-                    <p className="text-xs font-bold text-green-400">{proj.wt.toFixed(1)}h</p>
-                    <p className="text-[9px] text-green-400/60">↓{proj.wtSavePct.toFixed(0)}%</p>
-                  </div>
-                  <div className="glass-panel-sm rounded-lg p-1.5 text-center">
-                    <p className="text-[9px] text-white/30 uppercase">FE</p>
-                    <p className="text-xs font-bold text-green-400">{proj.fe.toFixed(0)}%</p>
-                    <p className="text-[9px] text-green-400/60">↑{proj.feGain.toFixed(1)}pp</p>
+                <div className="mt-2 space-y-1.5">
+                  {proj.benchmarkGrounded && (
+                    <p className="text-[9px] text-cyan-400/70 flex items-center gap-1">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+                      {proj.benchmarkSource && proj.benchmarkSource !== "industry_estimate"
+                        ? `Benchmark: ${proj.benchmarkSource}`
+                        : "Benchmark-grounded projection"}
+                    </p>
+                  )}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="glass-panel-sm rounded-lg p-1.5 text-center">
+                      <p className="text-[9px] text-white/30 uppercase">PT</p>
+                      <p className="text-xs font-bold text-green-400">{proj.pt.toFixed(1)}h</p>
+                      <p className="text-[9px] text-green-400/60">↓{proj.ptSavePct.toFixed(0)}%</p>
+                    </div>
+                    <div className="glass-panel-sm rounded-lg p-1.5 text-center">
+                      <p className="text-[9px] text-white/30 uppercase">WT</p>
+                      <p className="text-xs font-bold text-green-400">{proj.wt.toFixed(1)}h</p>
+                      <p className="text-[9px] text-green-400/60">↓{proj.wtSavePct.toFixed(0)}%</p>
+                    </div>
+                    <div className="glass-panel-sm rounded-lg p-1.5 text-center">
+                      <p className="text-[9px] text-white/30 uppercase">FE</p>
+                      <p className="text-xs font-bold text-green-400">{proj.fe.toFixed(0)}%</p>
+                      <p className="text-[9px] text-green-400/60">↑{proj.feGain.toFixed(1)}pp</p>
+                    </div>
                   </div>
                 </div>
               )}

@@ -1,0 +1,1345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TransformHub — Senior Leadership Demo Guide</title>
+<style>
+  :root {
+    --bg: #0a0e12;
+    --surface: rgba(255,255,255,0.04);
+    --border: rgba(255,255,255,0.08);
+    --accent: #6366f1;
+    --accent2: #06b6d4;
+    --green: #22c55e;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --text: rgba(255,255,255,0.9);
+    --muted: rgba(255,255,255,0.45);
+    --dim: rgba(255,255,255,0.2);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    height: 100vh;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* ── Layout ── */
+  #deck { width: 100vw; height: 100vh; position: relative; }
+  .slide {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    padding: 48px 64px;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.35s ease;
+  }
+  .slide.active { opacity: 1; pointer-events: all; }
+
+  /* ── Glass panel ── */
+  .glass {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    backdrop-filter: blur(12px);
+  }
+
+  /* ── Typography ── */
+  .eyebrow {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--accent2); margin-bottom: 12px;
+  }
+  h1 { font-size: 52px; font-weight: 800; line-height: 1.1; }
+  h2 { font-size: 36px; font-weight: 700; line-height: 1.2; }
+  h3 { font-size: 22px; font-weight: 600; }
+  h4 { font-size: 15px; font-weight: 600; }
+  .sub { font-size: 17px; color: var(--muted); margin-top: 12px; line-height: 1.6; }
+  .small { font-size: 12px; color: var(--muted); }
+
+  /* ── Gradient text ── */
+  .grad { background: linear-gradient(135deg, #818cf8 0%, #06b6d4 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+  .grad-green { background: linear-gradient(135deg, #22c55e 0%, #06b6d4 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+  .grad-amber { background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+
+  /* ── Badges ── */
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px; border-radius: 99px; font-size: 11px; font-weight: 600;
+    border: 1px solid;
+  }
+  .badge-blue  { color: #818cf8; border-color: rgba(129,140,248,.35); background: rgba(129,140,248,.08); }
+  .badge-green { color: #22c55e; border-color: rgba(34,197,94,.35);  background: rgba(34,197,94,.08);  }
+  .badge-amber { color: #f59e0b; border-color: rgba(245,158,11,.35); background: rgba(245,158,11,.08); }
+  .badge-red   { color: #ef4444; border-color: rgba(239,68,68,.35);  background: rgba(239,68,68,.08);  }
+  .badge-cyan  { color: #06b6d4; border-color: rgba(6,182,212,.35);  background: rgba(6,182,212,.08);  }
+
+  /* ── Step pills ── */
+  .step-num {
+    width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; color: var(--accent); flex-shrink: 0;
+  }
+
+  /* ── Accuracy bar ── */
+  .acc-bar-track { height: 6px; background: rgba(255,255,255,.08); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  .acc-bar-fill  { height: 100%; border-radius: 3px; transition: width 1s ease; }
+
+  /* ── Grid helpers ── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 100%; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; width: 100%; }
+  .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 14px; width: 100%; }
+
+  /* ── Cards ── */
+  .card { padding: 20px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface); }
+  .card-sm { padding: 14px 16px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); }
+  .card-accent { border-color: rgba(99,102,241,.4); background: rgba(99,102,241,.06); }
+  .card-green  { border-color: rgba(34,197,94,.4);  background: rgba(34,197,94,.06);  }
+  .card-amber  { border-color: rgba(245,158,11,.4); background: rgba(245,158,11,.06); }
+  .card-cyan   { border-color: rgba(6,182,212,.4);  background: rgba(6,182,212,.06);  }
+
+  /* ── Navigation ── */
+  #nav {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 16px;
+    background: rgba(255,255,255,.06); border: 1px solid var(--border);
+    padding: 10px 20px; border-radius: 99px; backdrop-filter: blur(16px);
+    z-index: 100;
+  }
+  #nav button {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: 14px; padding: 4px 8px; border-radius: 6px; transition: all .2s;
+    display: flex; align-items: center; gap: 4px;
+  }
+  #nav button:hover { color: var(--text); background: rgba(255,255,255,.06); }
+  #nav button:disabled { opacity: .25; cursor: not-allowed; }
+  #slide-counter { font-size: 12px; color: var(--muted); min-width: 52px; text-align: center; }
+  .dot-track { display: flex; gap: 5px; align-items: center; }
+  .dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--dim);
+    cursor: pointer; transition: all .2s;
+  }
+  .dot.active { background: var(--accent); width: 18px; border-radius: 3px; }
+
+  /* ── Mode toggle ── */
+  .mode-pill {
+    display: inline-flex; border-radius: 99px; overflow: hidden;
+    border: 1px solid var(--border); background: rgba(0,0,0,.3);
+  }
+  .mode-pill button {
+    padding: 8px 20px; font-size: 13px; font-weight: 600; cursor: pointer;
+    border: none; background: none; color: var(--muted); transition: all .2s;
+    border-radius: 99px;
+  }
+  .mode-pill button.active { background: var(--accent); color: #fff; }
+
+  /* ── URL chip ── */
+  .url-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(0,0,0,.4); border: 1px solid var(--border);
+    padding: 6px 14px; border-radius: 8px; font-family: monospace; font-size: 13px; color: var(--accent2);
+  }
+
+  /* ── Timeline ── */
+  .timeline { display: flex; flex-direction: column; gap: 0; width: 100%; }
+  .tl-item { display: flex; gap: 16px; }
+  .tl-line { display: flex; flex-direction: column; align-items: center; }
+  .tl-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); flex-shrink: 0; margin-top: 4px; }
+  .tl-connector { width: 2px; flex: 1; background: var(--border); margin: 4px 0; min-height: 20px; }
+  .tl-content { padding-bottom: 20px; flex: 1; }
+
+  /* ── Highlight box ── */
+  .highlight {
+    background: linear-gradient(135deg, rgba(99,102,241,.12), rgba(6,182,212,.08));
+    border: 1px solid rgba(99,102,241,.3);
+    border-radius: 12px; padding: 16px 20px;
+  }
+
+  /* ── Divider ── */
+  .divider { width: 100%; height: 1px; background: var(--border); margin: 16px 0; }
+
+  /* ── Icon ── */
+  .icon { font-size: 24px; }
+
+  /* ── Slide-specific layouts ── */
+  .slide-title { text-align: center; max-width: 800px; }
+  .slide-full  { width: 100%; max-width: 960px; }
+  .slide-split { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; width: 100%; max-width: 1000px; align-items: start; }
+
+  /* ── Metric number ── */
+  .metric-num { font-size: 36px; font-weight: 800; line-height: 1; }
+  .metric-label { font-size: 11px; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: .06em; }
+
+  /* ── Glow backgrounds ── */
+  .glow-blue  { position: absolute; width: 500px; height: 500px; border-radius: 50%; background: radial-gradient(circle, rgba(99,102,241,.12) 0%, transparent 70%); pointer-events: none; top: -100px; right: -100px; }
+  .glow-cyan  { position: absolute; width: 400px; height: 400px; border-radius: 50%; background: radial-gradient(circle, rgba(6,182,212,.10) 0%, transparent 70%); pointer-events: none; bottom: -80px; left: -80px; }
+
+  /* ── Kbd ── */
+  kbd {
+    display: inline-block; padding: 2px 7px; border-radius: 4px;
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.15);
+    font-size: 11px; font-family: monospace; color: var(--muted);
+  }
+
+  /* ── Progress ring ── */
+  .ring-wrap { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+  .ring-wrap svg { transform: rotate(-90deg); }
+  .ring-label { position: absolute; text-align: center; }
+</style>
+</head>
+<body>
+
+<div id="deck">
+
+<!-- ════════════════════════════════════════════
+     SLIDE 1 — Title
+════════════════════════════════════════════ -->
+<div class="slide active" id="s1">
+  <div class="glow-blue"></div>
+  <div class="glow-cyan"></div>
+  <div class="slide-title">
+    <div class="eyebrow">Senior Leadership Demo · March 2026</div>
+    <h1><span class="grad">TransformHub</span></h1>
+    <p class="sub" style="font-size:20px; max-width:560px; margin: 16px auto 0;">
+      Enterprise Digital Transformation Platform<br/>powered by 18 AI Agents
+    </p>
+    <div style="display:flex; gap:10px; justify-content:center; margin-top:28px; flex-wrap:wrap;">
+      <span class="badge badge-blue">Next.js 15 + TypeScript</span>
+      <span class="badge badge-cyan">FastAPI + LangGraph</span>
+      <span class="badge badge-green">PostgreSQL + pgvector</span>
+      <span class="badge badge-amber">18 AI Agents</span>
+    </div>
+    <div style="margin-top:36px; display:flex; gap:32px; justify-content:center;">
+      <div style="text-align:center;">
+        <div class="metric-num grad">3</div>
+        <div class="metric-label">Enterprise Orgs</div>
+      </div>
+      <div style="width:1px; background:var(--border);"></div>
+      <div style="text-align:center;">
+        <div class="metric-num grad">8</div>
+        <div class="metric-label">Core Modules</div>
+      </div>
+      <div style="width:1px; background:var(--border);"></div>
+      <div style="text-align:center;">
+        <div class="metric-num grad">78</div>
+        <div class="metric-label">AI-Mapped Capabilities</div>
+      </div>
+      <div style="width:1px; background:var(--border);"></div>
+      <div style="text-align:center;">
+        <div class="metric-num grad">245+</div>
+        <div class="metric-label">Functionalities</div>
+      </div>
+    </div>
+    <div style="margin-top:40px; display:flex; gap:24px; justify-content:center; align-items:center;">
+      <div class="url-chip">🌐 http://localhost:3000</div>
+      <div class="small">Navigate with <kbd>→</kbd> <kbd>←</kbd> or buttons below</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 2 — Agenda
+════════════════════════════════════════════ -->
+<div class="slide" id="s2">
+  <div class="glow-blue"></div>
+  <div style="width:100%; max-width:900px;">
+    <div class="eyebrow">Today's Agenda</div>
+    <h2 style="margin-bottom:32px;">What We'll Cover in <span class="grad">25 Minutes</span></h2>
+    <div class="grid-2" style="gap:16px;">
+      <div class="card card-accent" style="display:flex; gap:14px; align-items:flex-start;">
+        <div class="step-num">1</div>
+        <div>
+          <h4>Platform Overview <span class="small" style="font-weight:400;">(3 min)</span></h4>
+          <p class="small" style="margin-top:4px;">Architecture, 8 modules, 18 AI agents pipeline</p>
+        </div>
+      </div>
+      <div class="card" style="display:flex; gap:14px; align-items:flex-start;">
+        <div class="step-num" style="border-color:var(--accent2); color:var(--accent2);">2</div>
+        <div>
+          <h4>Discovery Module <span class="small" style="font-weight:400;">(4 min)</span></h4>
+          <p class="small" style="margin-top:4px;">Multi-pass AI discovery of products, capabilities & functionalities</p>
+        </div>
+      </div>
+      <div class="card" style="display:flex; gap:14px; align-items:flex-start;">
+        <div class="step-num" style="border-color:#22c55e; color:#22c55e;">3</div>
+        <div>
+          <h4>Value Stream Mapping <span class="small" style="font-weight:400;">(4 min)</span></h4>
+          <p class="small" style="margin-top:4px;">L1→L2→L3 drill-down, flow efficiency, Mermaid diagrams</p>
+        </div>
+      </div>
+      <div class="card" style="display:flex; gap:14px; align-items:flex-start;">
+        <div class="step-num" style="border-color:#a855f7; color:#a855f7;">4</div>
+        <div>
+          <h4>Future State Vision <span class="small" style="font-weight:400;">(4 min)</span></h4>
+          <p class="small" style="margin-top:4px;">Benchmark-grounded projections, automation mix breakdown</p>
+        </div>
+      </div>
+      <div class="card" style="display:flex; gap:14px; align-items:flex-start;">
+        <div class="step-num" style="border-color:#ef4444; color:#ef4444;">5</div>
+        <div>
+          <h4>Risk & Compliance <span class="small" style="font-weight:400;">(3 min)</span></h4>
+          <p class="small" style="margin-top:4px;">Risk gates, SHA-256 audit trail, regulatory frameworks</p>
+        </div>
+      </div>
+      <div class="card" style="display:flex; gap:14px; align-items:flex-start;">
+        <div class="step-num" style="border-color:#f59e0b; color:#f59e0b;">6</div>
+        <div>
+          <h4>Accuracy Dashboard <span class="small" style="font-weight:400;">(3 min)</span></h4>
+          <p class="small" style="margin-top:4px;">Per-module accuracy scores, RAG quality, action plan</p>
+        </div>
+      </div>
+      <div class="card" style="display:flex; gap:14px; align-items:flex-start;">
+        <div class="step-num" style="border-color:#06b6d4; color:#06b6d4;">7</div>
+        <div>
+          <h4>Live Entry Demo <span class="small" style="font-weight:400;">(4 min)</span></h4>
+          <p class="small" style="margin-top:4px;">Create new org, run agents in real-time, watch data populate</p>
+        </div>
+      </div>
+      <div class="card card-green" style="display:flex; gap:14px; align-items:flex-start;">
+        <div class="step-num" style="border-color:#22c55e; color:#22c55e;">8</div>
+        <div>
+          <h4>Q&A <span class="small" style="font-weight:400;">(5 min)</span></h4>
+          <p class="small" style="margin-top:4px;">Open questions, next steps, roadmap</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 3 — Choose Your Demo Mode
+════════════════════════════════════════════ -->
+<div class="slide" id="s3">
+  <div class="glow-cyan"></div>
+  <div style="width:100%; max-width:860px;">
+    <div class="eyebrow">Demo Options</div>
+    <h2 style="margin-bottom:8px;">Two Ways to Experience <span class="grad">TransformHub</span></h2>
+    <p class="sub" style="margin-bottom:32px;">Choose based on your audience and time available</p>
+    <div class="grid-2" style="gap:24px;">
+
+      <!-- Pre-filled -->
+      <div class="card card-accent" style="padding:28px;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+          <span style="font-size:28px;">🎯</span>
+          <div>
+            <h3>Pre-Filled Demo</h3>
+            <div class="badge badge-blue" style="margin-top:4px;">Recommended for Leadership</div>
+          </div>
+        </div>
+        <p class="small" style="line-height:1.7; color:var(--muted);">
+          3 enterprise orgs already loaded with rich AI-generated data. Instant visual impact — no waiting for agents to run.
+        </p>
+        <div class="divider"></div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; gap:8px; align-items:flex-start;">
+            <span style="color:var(--green); font-size:12px; margin-top:1px;">✓</span>
+            <span class="small">Login: <code style="color:var(--accent2);">demo@transformhub.ai</code></span>
+          </div>
+          <div style="display:flex; gap:8px; align-items:flex-start;">
+            <span style="color:var(--green); font-size:12px; margin-top:1px;">✓</span>
+            <span class="small">Password: <code style="color:var(--accent2);">demo1234</code></span>
+          </div>
+          <div style="display:flex; gap:8px; align-items:flex-start;">
+            <span style="color:var(--green); font-size:12px; margin-top:1px;">✓</span>
+            <span class="small">78 capabilities, 245 functionalities, full VSM</span>
+          </div>
+          <div style="display:flex; gap:8px; align-items:flex-start;">
+            <span style="color:var(--green); font-size:12px; margin-top:1px;">✓</span>
+            <span class="small">3 orgs: <strong>US Bank</strong>, Telstra Health, ING Bank</span>
+          </div>
+          <div style="display:flex; gap:8px; align-items:flex-start;">
+            <span style="color:var(--green); font-size:12px; margin-top:1px;">✓</span>
+            <span class="small">Accuracy scores immediately visible (~65–72%)</span>
+          </div>
+          <div style="display:flex; gap:8px; align-items:flex-start;">
+            <span style="color:var(--green); font-size:12px; margin-top:1px;">✓</span>
+            <span class="small">Estimated demo time: <strong>15–20 min</strong></span>
+          </div>
+        </div>
+        <div style="margin-top:20px; padding:12px 16px; background:rgba(99,102,241,.12); border-radius:8px; border:1px solid rgba(99,102,241,.2);">
+          <div class="small" style="color:var(--accent); font-weight:600;">Start here →</div>
+          <div class="url-chip" style="margin-top:6px; font-size:12px;">http://localhost:3000/login</div>
+        </div>
+      </div>
+
+      <!-- Live Entry -->
+      <div class="card card-cyan" style="padding:28px;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+          <span style="font-size:28px;">⚡</span>
+          <div>
+            <h3>Live Entry Demo</h3>
+            <div class="badge badge-cyan" style="margin-top:4px;">Shows AI Agents in Action</div>
+          </div>
+        </div>
+        <p class="small" style="line-height:1.7; color:var(--muted);">
+          Start from a blank org. Enter a real repo URL and watch AI agents populate data in real-time.
+        </p>
+        <div class="divider"></div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; gap:8px; align-items:flex-start;">
+            <span style="color:var(--accent2); font-size:12px; margin-top:1px;">✓</span>
+            <span class="small">Login: <code style="color:var(--accent2);">live@transformhub.ai</code></span>
+          </div>
+          <div style="display:flex; gap:8px; align-items:flex-start;">
+            <span style="color:var(--accent2); font-size:12px; margin-top:1px;">✓</span>
+            <span class="small">Password: <code style="color:var(--accent2);">live1234</code></span>
+          </div>
+          <div style="display:flex; gap:8px; align-items:flex-start;">
+            <span style="color:var(--accent2); font-size:12px; margin-top:1px;">✓</span>
+            <span class="small">Create org → paste GitHub repo URL</span>
+          </div>
+          <div style="display:flex; gap:8px; align-items:flex-start;">
+            <span style="color:var(--accent2); font-size:12px; margin-top:1px;">✓</span>
+            <span class="small">Run Discovery → review → run VSM → risk</span>
+          </div>
+          <div style="display:flex; gap:8px; align-items:flex-start;">
+            <span style="color:var(--accent2); font-size:12px; margin-top:1px;">✓</span>
+            <span class="small">Watch accuracy scores rise in real-time</span>
+          </div>
+          <div style="display:flex; gap:8px; align-items:flex-start;">
+            <span style="color:var(--accent2); font-size:12px; margin-top:1px;">✓</span>
+            <span class="small">Requires OPENAI_API_KEY in .env | <strong>20–30 min</strong></span>
+          </div>
+        </div>
+        <div style="margin-top:20px; padding:12px 16px; background:rgba(6,182,212,.1); border-radius:8px; border:1px solid rgba(6,182,212,.2);">
+          <div class="small" style="color:var(--accent2); font-weight:600;">Live orgs setup →</div>
+          <div class="url-chip" style="margin-top:6px; font-size:12px;">Organizations → + New Organization</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 4 — Platform Architecture
+════════════════════════════════════════════ -->
+<div class="slide" id="s4">
+  <div class="glow-blue"></div>
+  <div style="width:100%; max-width:960px;">
+    <div class="eyebrow">Architecture</div>
+    <h2 style="margin-bottom:28px;">Full-Stack AI Transformation Platform</h2>
+    <div class="grid-3" style="gap:16px; margin-bottom:20px;">
+      <div class="card card-accent" style="text-align:center; padding:20px 16px;">
+        <div style="font-size:30px; margin-bottom:8px;">⚛️</div>
+        <h4>Frontend</h4>
+        <p class="small" style="margin-top:6px; line-height:1.6;">Next.js 15 App Router<br/>TypeScript + Tailwind v4<br/>Dark glassmorphism UI</p>
+        <div class="badge badge-blue" style="margin-top:10px;">:3000</div>
+      </div>
+      <div class="card card-cyan" style="text-align:center; padding:20px 16px;">
+        <div style="font-size:30px; margin-bottom:8px;">🐍</div>
+        <h4>Agent Service</h4>
+        <p class="small" style="margin-top:6px; line-height:1.6;">FastAPI + LangGraph<br/>18 AI Agents<br/>RAG Pipeline (BM25+Vector)</p>
+        <div class="badge badge-cyan" style="margin-top:10px;">:8000</div>
+      </div>
+      <div class="card card-green" style="text-align:center; padding:20px 16px;">
+        <div style="font-size:30px; margin-bottom:8px;">🗄️</div>
+        <h4>Data Layer</h4>
+        <p class="small" style="margin-top:6px; line-height:1.6;">PostgreSQL 18 + pgvector<br/>Prisma ORM<br/>SHA-256 Audit Trail</p>
+        <div class="badge badge-green" style="margin-top:10px;">:5432</div>
+      </div>
+    </div>
+    <div class="highlight" style="padding:18px 24px;">
+      <div style="display:flex; gap:24px; flex-wrap:wrap; justify-content:center;">
+        <div style="text-align:center;">
+          <div class="metric-num grad" style="font-size:28px;">18</div>
+          <div class="metric-label">LangGraph Agents</div>
+        </div>
+        <div style="width:1px; background:var(--border);"></div>
+        <div style="text-align:center;">
+          <div class="metric-num grad" style="font-size:28px;">50+</div>
+          <div class="metric-label">API Routes</div>
+        </div>
+        <div style="width:1px; background:var(--border);"></div>
+        <div style="text-align:center;">
+          <div class="metric-num grad" style="font-size:28px;">8</div>
+          <div class="metric-label">Core Modules</div>
+        </div>
+        <div style="width:1px; background:var(--border);"></div>
+        <div style="text-align:center;">
+          <div class="metric-num grad" style="font-size:28px;">5</div>
+          <div class="metric-label">RAG Doc Categories</div>
+        </div>
+        <div style="width:1px; background:var(--border);"></div>
+        <div style="text-align:center;">
+          <div class="metric-num grad" style="font-size:28px;">3</div>
+          <div class="metric-label">Multi-tenancy Orgs</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 5 — Module Overview
+════════════════════════════════════════════ -->
+<div class="slide" id="s5">
+  <div class="glow-cyan"></div>
+  <div style="width:100%; max-width:960px;">
+    <div class="eyebrow">Platform Modules</div>
+    <h2 style="margin-bottom:28px;">8 Modules · End-to-End Transformation Lifecycle</h2>
+    <div class="grid-4" style="gap:12px;">
+      <div class="card-sm card-accent" style="padding:16px;">
+        <div style="font-size:20px; margin-bottom:8px;">🔍</div>
+        <h4 style="font-size:13px;">Discovery</h4>
+        <p class="small" style="margin-top:4px; line-height:1.5;">Multi-pass AI analysis · confidence scoring · source triangulation</p>
+      </div>
+      <div class="card-sm" style="border-color:rgba(34,197,94,.3); background:rgba(34,197,94,.05);">
+        <div style="font-size:20px; margin-bottom:8px;">🗺️</div>
+        <h4 style="font-size:13px; color:#22c55e;">Value Stream Map</h4>
+        <p class="small" style="margin-top:4px; line-height:1.5;">L1/L2/L3 hierarchy · flow efficiency · Mermaid viz</p>
+      </div>
+      <div class="card-sm" style="border-color:rgba(168,85,247,.3); background:rgba(168,85,247,.05);">
+        <div style="font-size:20px; margin-bottom:8px;">🚀</div>
+        <h4 style="font-size:13px; color:#a855f7;">Future State</h4>
+        <p class="small" style="margin-top:4px; line-height:1.5;">Benchmark-grounded · 3-band projections · automation mix</p>
+      </div>
+      <div class="card-sm" style="border-color:rgba(239,68,68,.3); background:rgba(239,68,68,.05);">
+        <div style="font-size:20px; margin-bottom:8px;">🛡️</div>
+        <h4 style="font-size:13px; color:#ef4444;">Risk & Compliance</h4>
+        <p class="small" style="margin-top:4px; line-height:1.5;">Risk gates · audit trail · framework mapping</p>
+      </div>
+      <div class="card-sm" style="border-color:rgba(245,158,11,.3); background:rgba(245,158,11,.05);">
+        <div style="font-size:20px; margin-bottom:8px;">🗓️</div>
+        <h4 style="font-size:13px; color:#f59e0b;">Product Roadmap</h4>
+        <p class="small" style="margin-top:4px; line-height:1.5;">RICE scoring · approval workflows · quarterly tracks</p>
+      </div>
+      <div class="card-sm" style="border-color:rgba(6,182,212,.3); background:rgba(6,182,212,.05);">
+        <div style="font-size:20px; margin-bottom:8px;">🔧</div>
+        <h4 style="font-size:13px; color:#06b6d4;">Product Workbench</h4>
+        <p class="small" style="margin-top:4px; line-height:1.5;">Readiness scoring · architecture views · inline editing</p>
+      </div>
+      <div class="card-sm" style="border-color:rgba(16,185,129,.3); background:rgba(16,185,129,.05);">
+        <div style="font-size:20px; margin-bottom:8px;">📚</div>
+        <h4 style="font-size:13px; color:#10b981;">Context Hub</h4>
+        <p class="small" style="margin-top:4px; line-height:1.5;">RAG pipeline · 5 doc categories · hybrid search</p>
+      </div>
+      <div class="card-sm" style="border-color:rgba(251,191,36,.3); background:rgba(251,191,36,.05);">
+        <div style="font-size:20px; margin-bottom:8px;">📊</div>
+        <h4 style="font-size:13px; color:#fbbf24;">Accuracy Dashboard</h4>
+        <p class="small" style="margin-top:4px; line-height:1.5;">Per-module scores · composite · action plan</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 6 — DEMO STEP 1: Login & Dashboard
+════════════════════════════════════════════ -->
+<div class="slide" id="s6">
+  <div class="glow-blue"></div>
+  <div style="width:100%; max-width:920px;">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+      <div class="step-num" style="width:36px; height:36px; font-size:14px;">1</div>
+      <div class="eyebrow" style="margin:0;">Demo Step 1</div>
+    </div>
+    <h2 style="margin-bottom:24px;">Login & Dashboard Overview</h2>
+    <div class="grid-2" style="gap:20px; align-items:start;">
+      <div>
+        <div class="card card-accent" style="margin-bottom:16px;">
+          <div style="font-size:13px; font-weight:600; color:var(--accent); margin-bottom:12px;">🔐 Login Credentials</div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div class="card-sm" style="background:rgba(0,0,0,.3);">
+              <div class="small" style="color:var(--muted); margin-bottom:2px;">For Pre-Filled Demo</div>
+              <code style="color:var(--accent2); font-size:12px;">demo@transformhub.ai / demo1234</code>
+            </div>
+            <div class="card-sm" style="background:rgba(0,0,0,.3);">
+              <div class="small" style="color:var(--muted); margin-bottom:2px;">For Live Entry Demo</div>
+              <code style="color:var(--accent2); font-size:12px;">live@transformhub.ai / live1234</code>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div style="font-size:13px; font-weight:600; margin-bottom:12px;">📌 Talking Points</div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; gap:8px;"><span style="color:var(--accent);">→</span><span class="small">Dashboard shows KPI summary: products, capabilities, functionalities</span></div>
+            <div style="display:flex; gap:8px;"><span style="color:var(--accent);">→</span><span class="small">Risk heatmap and agent activity feed visible immediately</span></div>
+            <div style="display:flex; gap:8px;"><span style="color:var(--accent);">→</span><span class="small">Org switcher at top — demo has US Bank, Telstra Health, ING Bank</span></div>
+            <div style="display:flex; gap:8px;"><span style="color:var(--accent);">→</span><span class="small">Each org is fully independent (multi-tenant architecture)</span></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="card card-green" style="margin-bottom:16px;">
+          <div style="font-size:13px; font-weight:600; color:#22c55e; margin-bottom:12px;">✅ What to Show</div>
+          <div class="timeline" style="gap:0;">
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small"><strong>Select US Bank</strong> in org switcher</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small"><strong>Point to KPI cards</strong> — 9 products, 26 capabilities, 79 functionalities</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small"><strong>Scroll to risk heatmap</strong> — highlight CRITICAL items</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div></div>
+              <div class="tl-content"><div class="small"><strong>Show agent activity feed</strong> — real-time execution log</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="card-sm card-amber">
+          <div class="small" style="color:var(--amber); font-weight:600;">💡 Pro Tip</div>
+          <div class="small" style="margin-top:4px;">If the org doesn't auto-load US Bank, open browser console and run: <code>localStorage.removeItem("currentOrgId")</code> then refresh.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 7 — DEMO STEP 2: Discovery
+════════════════════════════════════════════ -->
+<div class="slide" id="s7">
+  <div class="glow-blue"></div>
+  <div style="width:100%; max-width:920px;">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+      <div class="step-num" style="width:36px; height:36px; font-size:14px;">2</div>
+      <div class="eyebrow" style="margin:0;">Demo Step 2</div>
+      <span class="badge badge-blue">Discovery</span>
+      <span class="badge badge-green" style="font-size:10px;">~85% accuracy</span>
+    </div>
+    <h2 style="margin-bottom:20px;">Multi-Pass AI Discovery</h2>
+    <div class="grid-2" style="gap:20px; align-items:start;">
+      <div>
+        <div class="card" style="margin-bottom:14px;">
+          <div style="font-size:13px; font-weight:600; margin-bottom:12px;">🔍 What It Does</div>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <div class="card-sm" style="display:flex; gap:10px; align-items:flex-start;">
+              <span class="badge badge-blue" style="font-size:10px; margin-top:1px;">Pass 1</span>
+              <span class="small">Identifies <strong>Digital Products</strong> — human review gate</span>
+            </div>
+            <div class="card-sm" style="display:flex; gap:10px; align-items:flex-start;">
+              <span class="badge badge-cyan" style="font-size:10px; margin-top:1px;">Pass 2</span>
+              <span class="small">Maps <strong>Capabilities</strong> constrained by approved products</span>
+            </div>
+            <div class="card-sm" style="display:flex; gap:10px; align-items:flex-start;">
+              <span class="badge badge-green" style="font-size:10px; margin-top:1px;">Pass 3</span>
+              <span class="small">Extracts <strong>Functionalities</strong> with confidence + source attribution</span>
+            </div>
+          </div>
+        </div>
+        <div class="card card-accent">
+          <div style="font-size:13px; font-weight:600; color:var(--accent); margin-bottom:10px;">📌 Key Talking Points</div>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <div style="display:flex; gap:8px;"><span style="color:var(--accent);">→</span><span class="small">Each entity has a <strong>confidence score</strong> (78–97%) + evidence sources</span></div>
+            <div style="display:flex; gap:8px;"><span style="color:var(--accent);">→</span><span class="small"><strong>Source triangulation</strong>: GitHub, OpenAPI, DB schema, tests, docs</span></div>
+            <div style="display:flex; gap:8px;"><span style="color:var(--accent);">→</span><span class="small">Human-in-the-loop: edit/delete inline before approving</span></div>
+            <div style="display:flex; gap:8px;"><span style="color:var(--accent);">→</span><span class="small">4 views: Products, Drilldown, Tree, Product Catalog</span></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="card card-green" style="margin-bottom:14px;">
+          <div style="font-size:13px; font-weight:600; color:#22c55e; margin-bottom:10px;">✅ Demo Walkthrough</div>
+          <div class="timeline">
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small">Navigate to <strong>Discovery</strong> → note accuracy badge in header</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small">Switch view to <strong>Drilldown</strong> → click LoanFlow Digital → show capabilities tree</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small">Show <strong>confidence badges</strong> on each item (green = high, amber = medium)</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div></div>
+              <div class="tl-content"><div class="small">Switch to <strong>Product Catalog</strong> view for executive summary</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="highlight">
+          <div class="small" style="color:var(--accent2); font-weight:600;">US Bank Discovery Stats</div>
+          <div style="display:flex; gap:16px; margin-top:8px;">
+            <div style="text-align:center;"><div style="font-size:22px; font-weight:700; color:#818cf8;">9</div><div class="small">Products</div></div>
+            <div style="text-align:center;"><div style="font-size:22px; font-weight:700; color:#818cf8;">26</div><div class="small">Capabilities</div></div>
+            <div style="text-align:center;"><div style="font-size:22px; font-weight:700; color:#818cf8;">79</div><div class="small">Functionalities</div></div>
+            <div style="text-align:center;"><div style="font-size:22px; font-weight:700; color:#22c55e;">85%</div><div class="small">Avg Confidence</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 8 — DEMO STEP 3: VSM
+════════════════════════════════════════════ -->
+<div class="slide" id="s8">
+  <div class="glow-cyan"></div>
+  <div style="width:100%; max-width:920px;">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+      <div class="step-num" style="width:36px; height:36px; font-size:14px; border-color:#22c55e; color:#22c55e;">3</div>
+      <div class="eyebrow" style="margin:0;">Demo Step 3</div>
+      <span class="badge badge-green">Value Stream Mapping</span>
+      <span class="badge badge-green" style="font-size:10px;">100% VSM coverage</span>
+    </div>
+    <h2 style="margin-bottom:20px;">Three-Level Value Stream Analysis</h2>
+    <div class="grid-2" style="gap:20px; align-items:start;">
+      <div>
+        <div class="card" style="margin-bottom:14px;">
+          <div style="font-size:13px; font-weight:600; margin-bottom:12px;">🗺️ VSM Hierarchy</div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; gap:10px; align-items:center; padding:10px; background:rgba(34,197,94,.06); border-radius:8px; border:1px solid rgba(34,197,94,.2);">
+              <span class="badge badge-green" style="font-size:10px;">L1</span>
+              <span class="small"><strong>Segment Level</strong> — cross-product flow efficiency</span>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center; padding:10px; background:rgba(6,182,212,.06); border-radius:8px; border:1px solid rgba(6,182,212,.2);">
+              <span class="badge badge-cyan" style="font-size:10px;">L2</span>
+              <span class="small"><strong>Product Level</strong> — capability-by-capability metrics</span>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center; padding:10px; background:rgba(99,102,241,.06); border-radius:8px; border:1px solid rgba(99,102,241,.2);">
+              <span class="badge badge-blue" style="font-size:10px;">L3</span>
+              <span class="small"><strong>Functionality Level</strong> — step-by-step process timing</span>
+            </div>
+          </div>
+        </div>
+        <div class="card card-accent">
+          <div style="font-size:13px; font-weight:600; color:var(--accent); margin-bottom:10px;">📌 Key Talking Points</div>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <div style="display:flex; gap:8px;"><span style="color:var(--accent);">→</span><span class="small">Process Time, Wait Time, Lead Time, Flow Efficiency per capability</span></div>
+            <div style="display:flex; gap:8px;"><span style="color:var(--accent);">→</span><span class="small">Mermaid diagrams auto-generated for each capability</span></div>
+            <div style="display:flex; gap:8px;"><span style="color:var(--accent);">→</span><span class="small">Step classification: Value-Adding / Bottleneck / Waste / Waiting</span></div>
+            <div style="display:flex; gap:8px;"><span style="color:var(--accent);">→</span><span class="small">100% capability coverage in seeded data (78/78)</span></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="card card-green" style="margin-bottom:14px;">
+          <div style="font-size:13px; font-weight:600; color:#22c55e; margin-bottom:10px;">✅ Demo Walkthrough</div>
+          <div class="timeline">
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small">Navigate to <strong>VSM</strong> → note accuracy badge</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small">Start at <strong>L1 segment view</strong> — show flow efficiency bars across products</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small">Click into a product → <strong>L2 capability metrics</strong> with Mermaid diagram</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small">Drill to <strong>L3</strong> → show step classification panel (bottleneck/waste)</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div></div>
+              <div class="tl-content"><div class="small">Show <strong>Capability Comparison Chart</strong> — side-by-side FE across products</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="highlight">
+          <div class="small" style="color:var(--accent2); font-weight:600; margin-bottom:8px;">VSM Coverage Stats</div>
+          <div style="display:flex; gap:16px;">
+            <div style="text-align:center;"><div style="font-size:22px; font-weight:700; color:#22c55e;">100%</div><div class="small">VSM Coverage</div></div>
+            <div style="text-align:center;"><div style="font-size:22px; font-weight:700; color:#22c55e;">78</div><div class="small">Mermaid Diagrams</div></div>
+            <div style="text-align:center;"><div style="font-size:22px; font-weight:700; color:#f59e0b;">~35%</div><div class="small">Avg Flow Efficiency</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 9 — DEMO STEP 4: Future State
+════════════════════════════════════════════ -->
+<div class="slide" id="s9">
+  <div class="glow-blue"></div>
+  <div style="width:100%; max-width:920px;">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+      <div class="step-num" style="width:36px; height:36px; font-size:14px; border-color:#a855f7; color:#a855f7;">4</div>
+      <div class="eyebrow" style="margin:0;">Demo Step 4</div>
+      <span class="badge" style="color:#a855f7; border-color:rgba(168,85,247,.35); background:rgba(168,85,247,.08);">Future State Vision</span>
+      <span class="badge badge-amber" style="font-size:10px;">Benchmark-grounded</span>
+    </div>
+    <h2 style="margin-bottom:20px;">Benchmark-Grounded Transformation Vision</h2>
+    <div class="grid-2" style="gap:20px; align-items:start;">
+      <div>
+        <div class="card" style="margin-bottom:14px;">
+          <div style="font-size:13px; font-weight:600; margin-bottom:12px;">🚀 Key Features</div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div class="card-sm" style="border-color:rgba(168,85,247,.3); background:rgba(168,85,247,.05);">
+              <div class="small" style="font-weight:600; color:#a855f7;">Automation Mix Breakdown</div>
+              <div class="small" style="margin-top:4px;">RPA · AI/ML · Agent-Based · Conversational · Analytics</div>
+            </div>
+            <div class="card-sm" style="border-color:rgba(245,158,11,.3); background:rgba(245,158,11,.05);">
+              <div class="small" style="font-weight:600; color:#f59e0b;">Projected Metrics (3 bands)</div>
+              <div class="small" style="margin-top:4px;">Conservative / Expected / Optimistic — grounded in uploaded benchmarks</div>
+            </div>
+            <div class="card-sm" style="border-color:rgba(6,182,212,.3); background:rgba(6,182,212,.05);">
+              <div class="small" style="font-weight:600; color:#06b6d4;">Capability Modernisation Roadmap</div>
+              <div class="small" style="margin-top:4px;">RICE scoring · business impact · complexity · tech stack</div>
+            </div>
+          </div>
+        </div>
+        <div class="card card-amber">
+          <div style="font-size:13px; font-weight:600; color:#f59e0b; margin-bottom:10px;">📌 Key Talking Points</div>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <div style="display:flex; gap:8px;"><span style="color:#f59e0b;">→</span><span class="small">AI reads uploaded VSM benchmarks to ground projections in real data</span></div>
+            <div style="display:flex; gap:8px;"><span style="color:#f59e0b;">→</span><span class="small">"Benchmark-grounded" badge appears when docs are uploaded</span></div>
+            <div style="display:flex; gap:8px;"><span style="color:#f59e0b;">→</span><span class="small">Shows current vs future process flow side-by-side</span></div>
+            <div style="display:flex; gap:8px;"><span style="color:#f59e0b;">→</span><span class="small">Feeds directly into Product Roadmap for prioritisation</span></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="card card-green" style="margin-bottom:14px;">
+          <div style="font-size:13px; font-weight:600; color:#22c55e; margin-bottom:10px;">✅ Demo Walkthrough</div>
+          <div class="timeline">
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small">Navigate to <strong>Future State</strong> → note accuracy badge + benchmark badge</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small">Show <strong>automation mix</strong> chart — RPA/AI/Agent breakdown per product</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small">Expand a product → <strong>projected metrics table</strong> (conservative/expected/optimistic)</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div></div>
+              <div class="tl-content"><div class="small">Scroll to <strong>capability modernisation list</strong> with RICE scores + tech stack</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="highlight">
+          <div class="small" style="color:#a855f7; font-weight:600; margin-bottom:8px;">Seeded Future State Data</div>
+          <div style="display:flex; gap:16px;">
+            <div style="text-align:center;"><div style="font-size:22px; font-weight:700; color:#a855f7;">9</div><div class="small">Products with Vision</div></div>
+            <div style="text-align:center;"><div style="font-size:22px; font-weight:700; color:#f59e0b;">✓</div><div class="small">Benchmark Docs</div></div>
+            <div style="text-align:center;"><div style="font-size:22px; font-weight:700; color:#a855f7;">3</div><div class="small">Metric Bands</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 10 — DEMO STEP 5: Risk & Compliance
+════════════════════════════════════════════ -->
+<div class="slide" id="s10">
+  <div class="glow-cyan"></div>
+  <div style="width:100%; max-width:920px;">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+      <div class="step-num" style="width:36px; height:36px; font-size:14px; border-color:#ef4444; color:#ef4444;">5</div>
+      <div class="eyebrow" style="margin:0;">Demo Step 5</div>
+      <span class="badge badge-red">Risk & Compliance</span>
+    </div>
+    <h2 style="margin-bottom:20px;">Risk Gates · Compliance Mapping · Audit Trail</h2>
+    <div class="grid-2" style="gap:20px; align-items:start;">
+      <div>
+        <div class="card" style="margin-bottom:14px;">
+          <div style="font-size:13px; font-weight:600; margin-bottom:12px;">🛡️ Risk Architecture</div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:rgba(239,68,68,.08); border-radius:8px; border:1px solid rgba(239,68,68,.2);">
+              <span class="small font-bold">CRITICAL  ≥ 8.0</span>
+              <span class="badge badge-red">Blocks Transformation</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:rgba(245,158,11,.08); border-radius:8px; border:1px solid rgba(245,158,11,.2);">
+              <span class="small">HIGH  6.0 – 7.9</span>
+              <span class="badge badge-amber">Requires Mitigation</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:rgba(99,102,241,.05); border-radius:8px; border:1px solid rgba(99,102,241,.15);">
+              <span class="small">MEDIUM / LOW  &lt; 6.0</span>
+              <span class="badge badge-blue">Approved for Transition</span>
+            </div>
+          </div>
+        </div>
+        <div class="card card-red" style="border-color:rgba(239,68,68,.3); background:rgba(239,68,68,.05);">
+          <div style="font-size:13px; font-weight:600; color:#ef4444; margin-bottom:10px;">📌 Key Talking Points</div>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <div style="display:flex; gap:8px;"><span style="color:#ef4444;">→</span><span class="small"><strong>SHA-256 chained audit trail</strong> — tamper-proof, CRITICAL for regulated industries</span></div>
+            <div style="display:flex; gap:8px;"><span style="color:#ef4444;">→</span><span class="small">Compliance frameworks: SOX, FDIC, GLBA, PCI-DSS (US Bank)</span></div>
+            <div style="display:flex; gap:8px;"><span style="color:#ef4444;">→</span><span class="small">Risk score ≥ 8.0 automatically blocks product transformation</span></div>
+            <div style="display:flex; gap:8px;"><span style="color:#ef4444;">→</span><span class="small">Each risk item has a mitigation plan + evidence links</span></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="card card-green" style="margin-bottom:14px;">
+          <div style="font-size:13px; font-weight:600; color:#22c55e; margin-bottom:10px;">✅ Demo Walkthrough</div>
+          <div class="timeline">
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small">Navigate to <strong>Risk & Compliance</strong> → note accuracy badge</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small">Show <strong>risk category breakdown</strong> — COMPLIANCE / SECURITY / PERFORMANCE</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small">Click a <strong>CRITICAL risk</strong> — show "Transition BLOCKED" indicator</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small">Scroll to <strong>Compliance Mappings</strong> — SOX, PCI-DSS, FDIC requirements</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div></div>
+              <div class="tl-content"><div class="small">Show <strong>SHA-256 Audit Trail</strong> — chained hash verification</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="highlight">
+          <div class="small" style="color:#ef4444; font-weight:600; margin-bottom:8px;">US Bank Risk Profile</div>
+          <div style="display:flex; gap:16px;">
+            <div style="text-align:center;"><div style="font-size:22px; font-weight:700; color:#ef4444;">4</div><div class="small">Risk Assessments</div></div>
+            <div style="text-align:center;"><div style="font-size:22px; font-weight:700; color:#f59e0b;">6</div><div class="small">Compliance Maps</div></div>
+            <div style="text-align:center;"><div style="font-size:22px; font-weight:700; color:#22c55e;">4</div><div class="small">Audit Entries</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 11 — DEMO STEP 6: Accuracy Dashboard
+════════════════════════════════════════════ -->
+<div class="slide" id="s11">
+  <div class="glow-blue"></div>
+  <div style="width:100%; max-width:920px;">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+      <div class="step-num" style="width:36px; height:36px; font-size:14px; border-color:#fbbf24; color:#fbbf24;">6</div>
+      <div class="eyebrow" style="margin:0;">Demo Step 6</div>
+      <span class="badge badge-amber">Accuracy Dashboard</span>
+    </div>
+    <h2 style="margin-bottom:20px;">Per-Module AI Output Accuracy</h2>
+    <div class="grid-2" style="gap:20px; align-items:start;">
+      <div>
+        <div class="card" style="margin-bottom:14px;">
+          <div style="font-size:13px; font-weight:600; margin-bottom:14px;">📊 Expected Score Profile</div>
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <div>
+              <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+                <span class="small">Discovery</span>
+                <span class="small" style="color:#22c55e; font-weight:600;">~85%</span>
+              </div>
+              <div class="acc-bar-track"><div class="acc-bar-fill" style="width:85%; background:#22c55e;"></div></div>
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+                <span class="small">Lean VSM</span>
+                <span class="small" style="color:#22c55e; font-weight:600;">~72%</span>
+              </div>
+              <div class="acc-bar-track"><div class="acc-bar-fill" style="width:72%; background:#22c55e;"></div></div>
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+                <span class="small">Future State</span>
+                <span class="small" style="color:#22c55e; font-weight:600;">~70%</span>
+              </div>
+              <div class="acc-bar-track"><div class="acc-bar-fill" style="width:70%; background:#22c55e;"></div></div>
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+                <span class="small">Knowledge Base</span>
+                <span class="small" style="color:#22c55e; font-weight:600;">~70%</span>
+              </div>
+              <div class="acc-bar-track"><div class="acc-bar-fill" style="width:70%; background:#22c55e;"></div></div>
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+                <span class="small">Product Transformation</span>
+                <span class="small" style="color:#f59e0b; font-weight:600;">~55%</span>
+              </div>
+              <div class="acc-bar-track"><div class="acc-bar-fill" style="width:55%; background:#f59e0b;"></div></div>
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+                <span class="small">Risk & Compliance</span>
+                <span class="small" style="color:#f59e0b; font-weight:600;">~35%</span>
+              </div>
+              <div class="acc-bar-track"><div class="acc-bar-fill" style="width:35%; background:#f59e0b;"></div></div>
+            </div>
+            <div style="margin-top:4px; padding-top:10px; border-top:1px solid var(--border);">
+              <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+                <span class="small" style="font-weight:700;">Composite Score</span>
+                <span class="small" style="color:#818cf8; font-weight:700;">~65–72%</span>
+              </div>
+              <div class="acc-bar-track"><div class="acc-bar-fill" style="width:68%; background:linear-gradient(90deg, #818cf8, #06b6d4);"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="card card-amber" style="margin-bottom:14px;">
+          <div style="font-size:13px; font-weight:600; color:#f59e0b; margin-bottom:10px;">📌 Key Talking Points</div>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <div style="display:flex; gap:8px;"><span style="color:#f59e0b;">→</span><span class="small">Accuracy badges visible on <strong>every module page header</strong> — click to go here</span></div>
+            <div style="display:flex; gap:8px;"><span style="color:#f59e0b;">→</span><span class="small">Discovery high (~85%) because of confidence + triangulation + source diversity</span></div>
+            <div style="display:flex; gap:8px;"><span style="color:#f59e0b;">→</span><span class="small">Risk lower (~35%) because only 4 assessments vs 26 capabilities — run the Risk Agent to improve</span></div>
+            <div style="display:flex; gap:8px;"><span style="color:#f59e0b;">→</span><span class="small"><strong>Action Plan</strong> auto-generates top 4–8 improvement steps with direct links</span></div>
+          </div>
+        </div>
+        <div class="card card-green">
+          <div style="font-size:13px; font-weight:600; color:#22c55e; margin-bottom:10px;">✅ Demo Walkthrough</div>
+          <div class="timeline">
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small">Navigate to <strong>Accuracy</strong> from sidebar</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small">Show <strong>composite score</strong> + score-labelled module grid</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small">Expand <strong>Discovery module card</strong> — show source distribution breakdown</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#22c55e;"></div></div>
+              <div class="tl-content"><div class="small">Scroll to <strong>Action Plan</strong> — show prioritised improvement items with links</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 12 — DEMO STEP 7: Live Entry
+════════════════════════════════════════════ -->
+<div class="slide" id="s12">
+  <div class="glow-cyan"></div>
+  <div style="width:100%; max-width:920px;">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+      <div class="step-num" style="width:36px; height:36px; font-size:14px; border-color:#06b6d4; color:#06b6d4;">7</div>
+      <div class="eyebrow" style="margin:0;">Demo Step 7 (Optional)</div>
+      <span class="badge badge-cyan">Live Entry</span>
+      <span class="badge badge-amber" style="font-size:10px;">Requires OPENAI_API_KEY</span>
+    </div>
+    <h2 style="margin-bottom:20px;">Watch AI Agents Populate Data Live</h2>
+    <div class="grid-2" style="gap:20px; align-items:start;">
+      <div>
+        <div class="card card-cyan" style="margin-bottom:14px;">
+          <div style="font-size:13px; font-weight:600; color:#06b6d4; margin-bottom:12px;">⚡ Live Entry Flow</div>
+          <div class="timeline">
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#06b6d4;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small"><strong>Login</strong> as <code>live@transformhub.ai / live1234</code></div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#06b6d4;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small"><strong>Organizations</strong> → + New Organization (enter real company details)</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#06b6d4;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small"><strong>Discovery</strong> → paste GitHub repo URL → click Analyze</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#06b6d4;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small">Watch <strong>Pass 1 stream</strong> populate products → Review → Approve</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#06b6d4;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small">Run <strong>Pass 2 + 3</strong> → capabilities and functionalities appear</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#06b6d4;"></div><div class="tl-connector"></div></div>
+              <div class="tl-content"><div class="small">Navigate to <strong>VSM</strong> → run Lean VSM Agent → watch metrics appear</div></div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line"><div class="tl-dot" style="background:#06b6d4;"></div></div>
+              <div class="tl-content"><div class="small">Check <strong>Accuracy page</strong> — watch scores rise from 0 to live values</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="card" style="margin-bottom:14px;">
+          <div style="font-size:13px; font-weight:600; margin-bottom:10px;">📌 Good Repos to Demo With</div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div class="card-sm" style="background:rgba(0,0,0,.3);">
+              <div class="small" style="color:#22c55e; font-weight:600;">Best: Public GitHub Repos</div>
+              <div class="small" style="margin-top:4px; font-family:monospace; color:var(--accent2);">github.com/stripe/stripe-node</div>
+              <div class="small" style="margin-top:2px; font-family:monospace; color:var(--accent2);">github.com/plaid/plaid-python</div>
+            </div>
+            <div class="card-sm" style="background:rgba(0,0,0,.3);">
+              <div class="small" style="color:#f59e0b; font-weight:600;">Or use a Website URL</div>
+              <div class="small" style="margin-top:4px; font-family:monospace; color:var(--accent2);">https://stripe.com/docs/api</div>
+            </div>
+            <div class="card-sm" style="background:rgba(0,0,0,.3);">
+              <div class="small" style="color:#06b6d4; font-weight:600;">Or company's public portal</div>
+              <div class="small" style="margin-top:4px; color:var(--muted);">Any public-facing product documentation URL works</div>
+            </div>
+          </div>
+        </div>
+        <div class="card-sm card-amber">
+          <div class="small" style="color:#f59e0b; font-weight:600;">⚠️ Before Live Demo</div>
+          <div style="display:flex; flex-direction:column; gap:4px; margin-top:6px;">
+            <div style="display:flex; gap:6px;"><span style="color:#f59e0b; font-size:11px;">□</span><span class="small">OPENAI_API_KEY in agent-service/.env</span></div>
+            <div style="display:flex; gap:6px;"><span style="color:#f59e0b; font-size:11px;">□</span><span class="small">Backend running: curl localhost:8000/api/v1/health</span></div>
+            <div style="display:flex; gap:6px;"><span style="color:#f59e0b; font-size:11px;">□</span><span class="small">Test internet connection (URL analysis needs it)</span></div>
+            <div style="display:flex; gap:6px;"><span style="color:#f59e0b; font-size:11px;">□</span><span class="small">Pre-choose the repo URL you'll use</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 13 — Talking Points Summary
+════════════════════════════════════════════ -->
+<div class="slide" id="s13">
+  <div class="glow-blue"></div>
+  <div style="width:100%; max-width:960px;">
+    <div class="eyebrow">For the Presenter</div>
+    <h2 style="margin-bottom:24px;">Top Talking Points for Sr. Leadership</h2>
+    <div class="grid-2" style="gap:16px;">
+      <div class="card" style="padding:20px;">
+        <div style="font-size:18px; margin-bottom:8px;">💰</div>
+        <h4 style="margin-bottom:8px;">Business Value</h4>
+        <div style="display:flex; flex-direction:column; gap:5px;">
+          <div class="small">→ Replaces 6–8 separate tools (process mining, risk mgmt, roadmap, architecture)</div>
+          <div class="small">→ AI agents run in minutes what traditionally takes analysts weeks</div>
+          <div class="small">→ Human-in-the-loop ensures accuracy — not a black box</div>
+        </div>
+      </div>
+      <div class="card" style="padding:20px;">
+        <div style="font-size:18px; margin-bottom:8px;">🔒</div>
+        <h4 style="margin-bottom:8px;">Enterprise Grade</h4>
+        <div style="display:flex; flex-direction:column; gap:5px;">
+          <div class="small">→ SHA-256 chained audit trail — SOX / FDIC / GDPR ready</div>
+          <div class="small">→ Multi-tenant org isolation from day one</div>
+          <div class="small">→ Risk gates block transformation until mitigated</div>
+        </div>
+      </div>
+      <div class="card" style="padding:20px;">
+        <div style="font-size:18px; margin-bottom:8px;">📈</div>
+        <h4 style="margin-bottom:8px;">Data Quality</h4>
+        <div style="display:flex; flex-direction:column; gap:5px;">
+          <div class="small">→ Per-entity confidence scores (0–100%) on every discovered item</div>
+          <div class="small">→ Source triangulation across 8 evidence types</div>
+          <div class="small">→ Accuracy badges on every page — full transparency</div>
+        </div>
+      </div>
+      <div class="card" style="padding:20px;">
+        <div style="font-size:18px; margin-bottom:8px;">🤖</div>
+        <h4 style="margin-bottom:8px;">AI Pipeline</h4>
+        <div style="display:flex; flex-direction:column; gap:5px;">
+          <div class="small">→ 18 LangGraph agents with agent memory and feedback loops</div>
+          <div class="small">→ RAG pipeline with BM25 + vector hybrid search</div>
+          <div class="small">→ Benchmark-grounded projections from uploaded docs</div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:20px;" class="highlight">
+      <div style="display:flex; gap:24px; flex-wrap:wrap; justify-content:center; align-items:center;">
+        <div class="small" style="color:var(--accent2); font-weight:600;">Quick wins to show in Q&A →</div>
+        <div class="small">Switch org from US Bank → ING Bank (instant re-render with different data)</div>
+        <div style="width:1px; height:20px; background:var(--border);"></div>
+        <div class="small">Upload a doc in Context Hub and watch KB accuracy score rise</div>
+        <div style="width:1px; height:20px; background:var(--border);"></div>
+        <div class="small">Run Risk Agent on a product to show live agent execution streaming</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 14 — Pre-Demo Checklist
+════════════════════════════════════════════ -->
+<div class="slide" id="s14">
+  <div class="glow-cyan"></div>
+  <div style="width:100%; max-width:860px;">
+    <div class="eyebrow">Setup</div>
+    <h2 style="margin-bottom:28px;">Pre-Demo Checklist</h2>
+    <div class="grid-2" style="gap:20px;">
+      <div class="card card-green" style="padding:24px;">
+        <div style="font-size:16px; font-weight:700; color:#22c55e; margin-bottom:16px;">✅ Services Running</div>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div class="card-sm" style="display:flex; gap:10px; align-items:center;">
+            <span style="color:var(--muted); font-size:11px;">□</span>
+            <div>
+              <div class="small" style="font-weight:600;">Next.js frontend</div>
+              <div class="url-chip" style="font-size:11px; margin-top:4px;">http://localhost:3000</div>
+            </div>
+          </div>
+          <div class="card-sm" style="display:flex; gap:10px; align-items:center;">
+            <span style="color:var(--muted); font-size:11px;">□</span>
+            <div>
+              <div class="small" style="font-weight:600;">FastAPI backend</div>
+              <div class="url-chip" style="font-size:11px; margin-top:4px;">http://localhost:8000/api/v1/health</div>
+            </div>
+          </div>
+          <div class="card-sm" style="display:flex; gap:10px; align-items:center;">
+            <span style="color:var(--muted); font-size:11px;">□</span>
+            <div>
+              <div class="small" style="font-weight:600;">PostgreSQL</div>
+              <div class="small" style="color:var(--muted); margin-top:2px;">Postgres.app running · transformhub DB</div>
+            </div>
+          </div>
+          <div class="card-sm" style="display:flex; gap:10px; align-items:center;">
+            <span style="color:var(--muted); font-size:11px;">□</span>
+            <div>
+              <div class="small" style="font-weight:600;">Demo data seeded (3 orgs)</div>
+              <div class="small" style="color:var(--muted); font-family:monospace; font-size:11px; margin-top:2px;">npx tsx prisma/seed.ts</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="padding:24px;">
+        <div style="font-size:16px; font-weight:700; margin-bottom:16px;">🖥️ Browser Setup</div>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div class="card-sm" style="display:flex; gap:10px; align-items:flex-start;">
+            <span style="color:var(--muted); font-size:11px; margin-top:1px;">□</span>
+            <span class="small">Open <strong>incognito/private</strong> window to avoid cached session issues</span>
+          </div>
+          <div class="card-sm" style="display:flex; gap:10px; align-items:flex-start;">
+            <span style="color:var(--muted); font-size:11px; margin-top:1px;">□</span>
+            <span class="small">Zoom browser to <strong>90%</strong> so all columns are visible</span>
+          </div>
+          <div class="card-sm" style="display:flex; gap:10px; align-items:flex-start;">
+            <span style="color:var(--muted); font-size:11px; margin-top:1px;">□</span>
+            <span class="small">Pre-login as <strong>demo@transformhub.ai</strong> and navigate to Dashboard</span>
+          </div>
+          <div class="card-sm" style="display:flex; gap:10px; align-items:flex-start;">
+            <span style="color:var(--muted); font-size:11px; margin-top:1px;">□</span>
+            <span class="small">Select <strong>US Bank</strong> org — confirm KPIs are loaded (9 products visible)</span>
+          </div>
+          <div class="card-sm" style="display:flex; gap:10px; align-items:flex-start;">
+            <span style="color:var(--muted); font-size:11px; margin-top:1px;">□</span>
+            <span class="small">Have this demo guide open in a <strong>separate tab</strong></span>
+          </div>
+        </div>
+      </div>
+      <div class="card card-amber" style="padding:20px;">
+        <div style="font-size:16px; font-weight:700; color:#f59e0b; margin-bottom:12px;">⚡ Start Commands</div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div style="background:rgba(0,0,0,.5); border-radius:8px; padding:12px; font-family:monospace; font-size:11px; color:var(--accent2); line-height:1.8;">
+            <div style="color:var(--muted);"># Terminal 1 — Backend</div>
+            <div>cd TransformHub/agent-service</div>
+            <div>source venv/bin/activate</div>
+            <div>uvicorn app.main:app --reload --port 8000</div>
+            <br/>
+            <div style="color:var(--muted);"># Terminal 2 — Frontend</div>
+            <div>cd TransformHub/nextjs-app</div>
+            <div>npm run dev</div>
+          </div>
+        </div>
+      </div>
+      <div class="card card-accent" style="padding:20px;">
+        <div style="font-size:16px; font-weight:700; color:var(--accent); margin-bottom:12px;">🆘 Troubleshooting</div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div class="card-sm" style="background:rgba(0,0,0,.2);">
+            <div class="small" style="color:#f59e0b; font-weight:600;">Wrong org loads</div>
+            <div class="small" style="margin-top:2px; font-family:monospace; font-size:11px;">localStorage.removeItem("currentOrgId")</div>
+          </div>
+          <div class="card-sm" style="background:rgba(0,0,0,.2);">
+            <div class="small" style="color:#f59e0b; font-weight:600;">Port 3000 taken</div>
+            <div class="small" style="margin-top:2px;">Kill Product Coach: <code style="font-size:10px;">kill $(lsof -ti:3000)</code></div>
+          </div>
+          <div class="card-sm" style="background:rgba(0,0,0,.2);">
+            <div class="small" style="color:#f59e0b; font-weight:600;">No data showing</div>
+            <div class="small" style="margin-top:2px; font-family:monospace; font-size:11px;">npx tsx prisma/seed.ts</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 15 — End / Thank You
+════════════════════════════════════════════ -->
+<div class="slide" id="s15">
+  <div class="glow-blue"></div>
+  <div class="glow-cyan"></div>
+  <div class="slide-title">
+    <div class="eyebrow">TransformHub · 2026</div>
+    <h1 style="font-size:44px;"><span class="grad">Ready to Transform.</span></h1>
+    <p class="sub" style="font-size:17px; max-width:540px; margin:16px auto 0;">
+      AI-powered enterprise transformation from discovery to delivery — fully auditable, benchmark-grounded, and transparent.
+    </p>
+    <div class="divider" style="max-width:400px; margin:28px auto;"></div>
+    <div class="grid-3" style="max-width:720px; margin:0 auto 28px; gap:12px;">
+      <div class="card-sm" style="text-align:center; padding:16px;">
+        <div class="metric-num grad" style="font-size:24px;">3</div>
+        <div class="metric-label">Enterprise Demo Orgs</div>
+      </div>
+      <div class="card-sm" style="text-align:center; padding:16px;">
+        <div class="metric-num grad" style="font-size:24px;">18</div>
+        <div class="metric-label">AI Agents</div>
+      </div>
+      <div class="card-sm" style="text-align:center; padding:16px;">
+        <div class="metric-num grad" style="font-size:24px;">~68%</div>
+        <div class="metric-label">Composite Accuracy</div>
+      </div>
+    </div>
+    <div style="display:flex; gap:16px; justify-content:center; flex-wrap:wrap;">
+      <div class="url-chip">🌐 http://localhost:3000</div>
+      <div class="url-chip">🔑 demo@transformhub.ai / demo1234</div>
+    </div>
+    <div style="margin-top:24px;" class="highlight" style="max-width:500px; margin:24px auto 0;">
+      <div class="small" style="color:var(--accent2);">This deck: <code>TransformHub/docs/demo-guide.html</code> · Open in any browser</div>
+    </div>
+  </div>
+</div>
+
+</div><!-- end #deck -->
+
+<!-- ── Navigation ── -->
+<div id="nav">
+  <button id="btn-prev" onclick="go(-1)" disabled>← Prev</button>
+  <div class="dot-track" id="dots"></div>
+  <span id="slide-counter">1 / 15</span>
+  <button id="btn-next" onclick="go(1)">Next →</button>
+</div>
+
+<script>
+const slides = document.querySelectorAll('.slide');
+const total = slides.length;
+let current = 0;
+
+const dotsEl = document.getElementById('dots');
+const counter = document.getElementById('slide-counter');
+const btnPrev = document.getElementById('btn-prev');
+const btnNext = document.getElementById('btn-next');
+
+// Build dots
+for (let i = 0; i < total; i++) {
+  const d = document.createElement('div');
+  d.className = 'dot' + (i === 0 ? ' active' : '');
+  d.onclick = () => goTo(i);
+  dotsEl.appendChild(d);
+}
+
+function goTo(n) {
+  slides[current].classList.remove('active');
+  dotsEl.children[current].classList.remove('active');
+  current = Math.max(0, Math.min(n, total - 1));
+  slides[current].classList.add('active');
+  dotsEl.children[current].classList.add('active');
+  counter.textContent = `${current + 1} / ${total}`;
+  btnPrev.disabled = current === 0;
+  btnNext.disabled = current === total - 1;
+}
+
+function go(dir) { goTo(current + dir); }
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') go(1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')                     go(-1);
+  if (e.key === 'Home') goTo(0);
+  if (e.key === 'End')  goTo(total - 1);
+});
+</script>
+</body>
+</html>

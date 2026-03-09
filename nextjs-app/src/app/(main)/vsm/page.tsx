@@ -8,6 +8,7 @@ import GlassInput from "@/components/ui/GlassInput";
 import ProgressRing from "@/components/ui/ProgressRing";
 import MetricCard from "@/components/ui/MetricCard";
 import GlassButton from "@/components/ui/GlassButton";
+import ModuleAccuracyBadge from "@/components/ui/ModuleAccuracyBadge";
 import EntityListSidebar from "@/components/ui/EntityListSidebar";
 import StepClassificationPanel from "@/components/vsm/StepClassificationPanel";
 import CapabilityComparisonChart from "@/components/vsm/CapabilityComparisonChart";
@@ -247,7 +248,10 @@ function VsmPageInner() {
               Back to Discovery
             </button>
           )}
-          <h1 className="text-2xl font-bold text-white">Value Stream Mapping</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-white">Value Stream Mapping</h1>
+            <ModuleAccuracyBadge moduleKey="leanVsm" />
+          </div>
           <p className="text-white/50 mt-1">
             L1 — Segment view &nbsp;·&nbsp; L2 — Product capabilities &nbsp;·&nbsp; L3 — Functionality steps
           </p>

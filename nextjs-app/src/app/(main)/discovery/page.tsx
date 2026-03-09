@@ -22,6 +22,7 @@ import { useBmadHierarchy } from "@/hooks/useBmadHierarchy";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { computeCapabilityRollup } from "@/lib/vsm-hierarchy";
 import ExportDropdown from "@/components/ui/ExportDropdown";
+import ModuleAccuracyBadge from "@/components/ui/ModuleAccuracyBadge";
 
 export default function DiscoveryPage() {
   const router = useRouter();
@@ -390,7 +391,10 @@ export default function DiscoveryPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Discovery</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-white">Discovery</h1>
+            <ModuleAccuracyBadge moduleKey="discovery" />
+          </div>
           <p className="text-white/50 mt-1">Analyze repositories and discover business functionalities</p>
         </div>
         <ExportDropdown

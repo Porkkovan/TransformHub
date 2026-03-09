@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import GlassCard from "@/components/ui/GlassCard";
 import GlassButton from "@/components/ui/GlassButton";
+import ModuleAccuracyBadge from "@/components/ui/ModuleAccuracyBadge";
 import GlassBadge from "@/components/ui/GlassBadge";
 import RiskCategoryBreakdown from "@/components/risk/RiskCategoryBreakdown";
 import ComplianceFrameworkTabs from "@/components/risk/ComplianceFrameworkTabs";
@@ -54,7 +55,10 @@ export default function RiskCompliancePage() {
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Risk & Compliance</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-white">Risk & Compliance</h1>
+            <ModuleAccuracyBadge moduleKey="riskCompliance" />
+          </div>
           <p className="text-white/50 mt-1">Regulatory guardrails and risk assessment{currentOrg?.regulatoryFrameworks?.length ? ` (${currentOrg.regulatoryFrameworks.join(", ")})` : ""}</p>
         </div>
         <GlassButton onClick={handleRunAgent} disabled={agentLoading}>

@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import GlassCard from "@/components/ui/GlassCard";
 import GlassButton from "@/components/ui/GlassButton";
+import ModuleAccuracyBadge from "@/components/ui/ModuleAccuracyBadge";
 import GlassBadge from "@/components/ui/GlassBadge";
 import StatusIndicator from "@/components/ui/StatusIndicator";
 import EntityListSidebar from "@/components/ui/EntityListSidebar";
@@ -1132,7 +1133,10 @@ export default function FutureStatePage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Future State Vision</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-white">Future State Vision</h1>
+            <ModuleAccuracyBadge moduleKey="futureState" />
+          </div>
           <p className="text-white/50 mt-1">Envision modernized and agent-based future capabilities with projected VSM metrics</p>
         </div>
         <div className="flex items-center gap-4">

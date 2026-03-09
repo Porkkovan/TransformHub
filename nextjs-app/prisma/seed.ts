@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
 import { createHash } from "crypto";
+import bcrypt from "bcryptjs";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -92,6 +93,8 @@ async function seedOrganization(data: OrgSeedData) {
         futureState: product.futureState,
         businessSegment: product.businessSegment,
         repositoryId: repo.id,
+        confidence: 0.88 + (productIds.length % 3) * 0.03,
+        sources: ["github_structure", "url_analysis", "context_document"],
       },
     });
     productIds.push(prod.id);
@@ -122,35 +125,63 @@ async function seedOrganization(data: OrgSeedData) {
     const productCapIds: string[] = [];
     const productCapNames: string[] = [];
 
+    // Evidence source pools for realistic triangulation
+    const CAP_SOURCE_POOLS = [
+      ["github_structure", "openapi_spec", "context_document"],
+      ["github_structure", "url_analysis", "db_schema"],
+      ["github_tests", "context_document", "integration_data"],
+      ["openapi_spec", "db_schema", "url_analysis"],
+      ["github_structure", "github_tests", "context_document", "integration_data"],
+    ];
+    const FUNC_SOURCE_POOLS = [
+      ["github_structure", "github_tests", "context_document"],
+      ["openapi_spec", "db_schema"],
+      ["github_structure", "url_analysis", "integration_data"],
+      ["github_tests", "context_document"],
+      ["openapi_spec", "github_structure", "db_schema"],
+    ];
+
+    let capIdx = 0;
     for (const cap of product.capabilities) {
+      const capSources = CAP_SOURCE_POOLS[capIdx % CAP_SOURCE_POOLS.length];
+      const capConf = 0.78 + (capIdx % 5) * 0.03 + (capIdx % 3) * 0.02; // 0.78–0.93 deterministic
       const capability = await prisma.digitalCapability.create({
         data: {
           name: cap.name,
           description: cap.description,
           category: cap.category,
           digitalProductId: prod.id,
+          confidence: Math.min(capConf, 0.97),
+          sources: capSources,
         },
       });
       totalCaps++;
       if (!firstCapId) firstCapId = capability.id;
       productCapIds.push(capability.id);
       productCapNames.push(capability.name);
+      capIdx++;
 
       const capFuncIds: string[] = [];
       const capFuncNames: string[] = [];
 
+      let funcIdx = 0;
       for (const func of cap.functionalities) {
+        const funcSources = FUNC_SOURCE_POOLS[funcIdx % FUNC_SOURCE_POOLS.length];
+        const funcConf = 0.72 + (funcIdx % 5) * 0.04 + (capIdx % 4) * 0.02; // 0.72–0.90
         const functionality = await prisma.functionality.create({
           data: {
             name: func.name,
             description: func.description,
             sourceFiles: func.sourceFiles,
             digitalCapabilityId: capability.id,
+            confidence: Math.min(funcConf, 0.95),
+            sources: funcSources,
           },
         });
         totalFuncs++;
         capFuncIds.push(functionality.id);
         capFuncNames.push(functionality.name);
+        funcIdx++;
 
         // Cycle through org personas for PersonaMapping
         const persona = data.org.personas[personaIdx % data.org.personas.length];
@@ -172,16 +203,24 @@ async function seedOrganization(data: OrgSeedData) {
     capabilityIdsByProduct.push(productCapIds);
     capabilityNamesByProduct.push(productCapNames);
 
-    // f. Create VsmMetrics linked to the first capability of the product
-    if (firstCapId) {
+    // f. Create VsmMetrics for ALL capabilities (varied metrics per capability)
+    for (let vIdx = 0; vIdx < productCapIds.length; vIdx++) {
+      const scale = 0.6 + vIdx * 0.12; // each cap scales up slightly
+      const pt = Math.max(1, Math.round(product.vsm.processTime * scale));
+      const wt = Math.max(0, Math.round(product.vsm.waitTime * (0.4 + vIdx * 0.08)));
+      const lt = pt + wt;
+      const fe = lt > 0 ? Math.round((pt / lt) * 1000) / 10 : product.vsm.flowEfficiency;
+      const capMermaid = vIdx === 0
+        ? product.vsm.mermaidSource
+        : `graph LR\n  A[${productCapNames[vIdx].split(" ")[0]} Input] --> B[Validate] --> C{Decision} --> |OK| D[Process] --> E[Complete]\n  C --> |Reject| F[Review Queue] --> B`;
       await prisma.vsmMetrics.create({
         data: {
-          processTime: product.vsm.processTime,
-          leadTime: product.vsm.leadTime,
-          waitTime: product.vsm.waitTime,
-          flowEfficiency: product.vsm.flowEfficiency,
-          mermaidSource: product.vsm.mermaidSource,
-          digitalCapabilityId: firstCapId,
+          processTime: pt,
+          leadTime: lt,
+          waitTime: wt,
+          flowEfficiency: fe,
+          mermaidSource: capMermaid,
+          digitalCapabilityId: productCapIds[vIdx],
         },
       });
     }
@@ -474,6 +513,58 @@ async function seedOrganization(data: OrgSeedData) {
   await prisma.auditLog.create({
     data: { action: "TRANSFORMATION_PLANNED", entityType: "Repository", entityId: repo.id, actor: "product-transformation-agent", payload: JSON.parse(auditPayload4), payloadHash: hash4, previousHash: hash3 },
   });
+
+  // ─── Context Documents (all 5 categories, INDEXED with chunk counts) ───
+  const contextDocDefs = [
+    { category: "CURRENT_STATE", fileName: `${data.org.slug}-current-state-brd.pdf`, fileType: "application/pdf", chunkCount: 48, subCategory: "Business Requirements" },
+    { category: "CURRENT_STATE", fileName: `${data.org.slug}-process-maps.pdf`, fileType: "application/pdf", chunkCount: 35, subCategory: "Process Maps" },
+    { category: "VSM_BENCHMARKS", fileName: `${data.org.slug}-vsm-kpi-benchmarks.xlsx`, fileType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", chunkCount: 28, subCategory: "KPI Benchmarks" },
+    { category: "TRANSFORMATION_CASE_STUDIES", fileName: `${data.org.slug}-industry-case-studies.pdf`, fileType: "application/pdf", chunkCount: 62, subCategory: "Industry Cases" },
+    { category: "ARCHITECTURE_STANDARDS", fileName: `${data.org.slug}-tech-architecture-standards.pdf`, fileType: "application/pdf", chunkCount: 31, subCategory: "Enterprise Architecture" },
+    { category: "AGENT_OUTPUT", fileName: `${data.org.slug}-discovery-agent-output.json`, fileType: "application/json", chunkCount: 22, subCategory: "Discovery" },
+    { category: "AGENT_OUTPUT", fileName: `${data.org.slug}-vsm-agent-output.json`, fileType: "application/json", chunkCount: 18, subCategory: "VSM" },
+  ];
+  for (const doc of contextDocDefs) {
+    await prisma.contextDocument.create({
+      data: {
+        organizationId: org.id,
+        fileName: doc.fileName,
+        fileType: doc.fileType,
+        fileSize: 120000 + doc.chunkCount * 3500,
+        filePath: `/uploads/seed/${doc.fileName}`,
+        category: doc.category,
+        subCategory: doc.subCategory,
+        status: "INDEXED",
+        chunkCount: doc.chunkCount,
+      },
+    });
+  }
+
+  // ─── Agent Memories ──────────────────────────────────────────────────
+  const memoryDefs = [
+    { agentType: "discovery", key: "product_patterns", memoryType: "PATTERN", value: { patterns: ["microservices", "monolith", "event-driven"], confidence: 0.91 }, confidence: 0.92, accessCount: 9 },
+    { agentType: "discovery", key: "source_quality_map", memoryType: "INSIGHT", value: { best_sources: ["openapi_spec", "github_tests"], signal_strength: "high" }, confidence: 0.88, accessCount: 5 },
+    { agentType: "lean_vsm", key: "flow_efficiency_benchmarks", memoryType: "BENCHMARK", value: { industry_avg: 38.2, top_quartile: 55.0, bottom_quartile: 22.0 }, confidence: 0.87, accessCount: 6 },
+    { agentType: "lean_vsm", key: "bottleneck_patterns", memoryType: "PATTERN", value: { common_bottlenecks: ["manual_review", "approval_queue", "data_validation"] }, confidence: 0.84, accessCount: 4 },
+    { agentType: "risk_compliance", key: "framework_requirements", memoryType: "KNOWLEDGE", value: { frameworks: data.org.regulatoryFrameworks, mapped_controls: data.compliance.length }, confidence: 0.95, accessCount: 14 },
+    { agentType: "risk_compliance", key: "severity_thresholds", memoryType: "RULE", value: { CRITICAL: 8.0, HIGH: 6.0, MEDIUM: 4.0, LOW: 2.0 }, confidence: 0.99, accessCount: 22 },
+    { agentType: "future_state_vision", key: "automation_benchmarks", memoryType: "BENCHMARK", value: { rpa: 25, ai_ml: 40, agent_based: 20, conversational: 10 }, confidence: 0.86, accessCount: 3 },
+    { agentType: "product_transformation", key: "transformation_patterns", memoryType: "PATTERN", value: { successful: ["strangler_fig", "event_sourcing", "cqrs"], risky: ["big_bang_rewrite"] }, confidence: 0.89, accessCount: 7 },
+    { agentType: "architecture", key: "stack_preferences", memoryType: "PREFERENCE", value: { preferred: ["microservices", "api_gateway", "event_bus"], avoid: ["monolith_expansion"] }, confidence: 0.82, accessCount: 4 },
+  ];
+  for (const mem of memoryDefs) {
+    await prisma.agentMemory.create({
+      data: {
+        agentType: mem.agentType,
+        organizationId: org.id,
+        memoryType: mem.memoryType,
+        key: mem.key,
+        value: mem.value,
+        confidence: mem.confidence,
+        accessCount: mem.accessCount,
+      },
+    });
+  }
 
   console.log(`  ✓ ${data.org.name} seeded (${totalCaps} capabilities, ${totalFuncs} functionalities)`);
 }
@@ -1801,6 +1892,18 @@ async function main() {
   await prisma.techTrend.deleteMany();
   await prisma.organization.deleteMany();
 
+  // ── Demo users ────────────────────────────────────────────────────────────
+  console.log("Creating demo users...");
+  const demoPasswordHash = await bcrypt.hash("demo1234", 10);
+  const livePasswordHash = await bcrypt.hash("live1234", 10);
+  await prisma.user.createMany({
+    data: [
+      { email: "demo@transformhub.ai", name: "Demo User", passwordHash: demoPasswordHash, role: "ADMIN" },
+      { email: "live@transformhub.ai", name: "Live Demo", passwordHash: livePasswordHash, role: "ADMIN" },
+      { email: "admin@transformhub.ai", name: "Admin", passwordHash: demoPasswordHash, role: "ADMIN" },
+    ],
+  });
+
   console.log("Seeding organizations...");
 
   await seedOrganization(US_BANK);
@@ -1808,12 +1911,14 @@ async function main() {
   await seedOrganization(ING_BANK);
 
   console.log("\nSeed data created successfully!");
+  console.log("  Demo login: demo@transformhub.ai / demo1234");
+  console.log("  Live login: live@transformhub.ai / live1234");
   console.log("  3 organizations, 3 repositories, 9 digital products");
-  console.log("  ~78 capabilities, ~300+ functionalities");
-  console.log("  9 VSM metrics with Mermaid diagrams");
-  console.log("  12 risk assessments, 18 compliance mappings");
-  console.log("  21 agent executions (incl. architecture + roadmap), 12 audit log entries");
-  console.log("  ~57 roadmap items with RICE scores across 3 orgs");
+  console.log("  78 capabilities (100% VSM coverage), 245+ functionalities");
+  console.log("  78 VSM metrics with Mermaid diagrams (all capabilities covered)");
+  console.log("  36 risk assessments, 54 compliance mappings");
+  console.log("  21 context documents (5 categories, all INDEXED)");
+  console.log("  27 agent memories across core agents");
 }
 
 main()

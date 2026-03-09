@@ -96,7 +96,7 @@ async def load_current_state(state: AgentState) -> dict[str, Any]:
 async def analyze_market_trends(state: AgentState) -> dict[str, Any]:
     """Analyze wealth management industry trends affecting each capability."""
     org = get_org_context(state["input_data"])
-    ctx = format_context_section(state["input_data"])
+    ctx = format_context_section(state["input_data"], agent_type="market_intelligence")
     current_state_data = state.get("current_state_data", [])
 
     prompt = (

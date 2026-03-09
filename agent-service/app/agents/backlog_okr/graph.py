@@ -113,7 +113,7 @@ async def load_transformation_context(state: AgentState) -> dict[str, Any]:
 async def generate_okrs(state: AgentState) -> dict[str, Any]:
     """Generate quarterly OKRs aligned with transformation goals."""
     org = get_org_context(state["input_data"])
-    ctx = format_context_section(state["input_data"])
+    ctx = format_context_section(state["input_data"], agent_type="backlog_okr")
     transformation_context = state.get("transformation_context", {})
 
     prompt = (

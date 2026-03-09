@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import GlassButton from "@/components/ui/GlassButton";
+import ModuleAccuracyBadge from "@/components/ui/ModuleAccuracyBadge";
 import GlassCard from "@/components/ui/GlassCard";
 import GlassSelect from "@/components/ui/GlassSelect";
 import GlassBadge from "@/components/ui/GlassBadge";
@@ -145,7 +146,10 @@ export default function ProductRoadmapPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Product Roadmap</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-white">Product Roadmap</h1>
+            <ModuleAccuracyBadge moduleKey="productTransformation" />
+          </div>
           <p className="text-white/50 mt-1">Product-centric capability and functionality roadmap</p>
         </div>
         <div className="flex items-center gap-3">

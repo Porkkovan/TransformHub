@@ -16,6 +16,7 @@ import AgentOutputReviewPanel from "@/components/shared/AgentOutputReviewPanel";
 import { parseFunctionalityTiming, computeCapabilityRollup } from "@/lib/vsm-hierarchy";
 import { formatDuration } from "@/lib/format-duration";
 import ExportDropdown from "@/components/ui/ExportDropdown";
+import ModuleAccuracyBadge from "@/components/ui/ModuleAccuracyBadge";
 
 type ViewLevel = "L1" | "L2" | "L3";
 
@@ -141,7 +142,10 @@ export default function ProductWorkbenchPage() {
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Product Workbench</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-white">Product Workbench</h1>
+            <ModuleAccuracyBadge moduleKey="discovery" />
+          </div>
           <p className="text-white/50 mt-1">
             L1 — Digital products &nbsp;·&nbsp; L2 — Capabilities &nbsp;·&nbsp; L3 — Functionalities
           </p>

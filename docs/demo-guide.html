@@ -100,28 +100,14 @@
   .card-amber  { border-color: rgba(245,158,11,.4); background: rgba(245,158,11,.06); }
   .card-cyan   { border-color: rgba(6,182,212,.4);  background: rgba(6,182,212,.06);  }
 
-  /* ── Navigation ── */
-  #nav {
-    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
-    display: flex; align-items: center; gap: 16px;
-    background: rgba(255,255,255,.06); border: 1px solid var(--border);
-    padding: 10px 20px; border-radius: 99px; backdrop-filter: blur(16px);
-    z-index: 100;
-  }
-  #nav button {
-    background: none; border: none; color: var(--muted); cursor: pointer;
-    font-size: 14px; padding: 4px 8px; border-radius: 6px; transition: all .2s;
-    display: flex; align-items: center; gap: 4px;
-  }
-  #nav button:hover { color: var(--text); background: rgba(255,255,255,.06); }
-  #nav button:disabled { opacity: .25; cursor: not-allowed; }
-  #slide-counter { font-size: 12px; color: var(--muted); min-width: 52px; text-align: center; }
-  .dot-track { display: flex; gap: 5px; align-items: center; }
+  /* ── Navigation (now inside bottom bar — see #bottom-bar) ── */
+  .dot-track { display: flex; gap: 4px; align-items: center; }
   .dot {
-    width: 6px; height: 6px; border-radius: 50%; background: var(--dim);
+    width: 5px; height: 5px; border-radius: 50%; background: rgba(255,255,255,.25);
     cursor: pointer; transition: all .2s;
   }
-  .dot.active { background: var(--accent); width: 18px; border-radius: 3px; }
+  .dot.active { background: #f59e0b; width: 14px; border-radius: 3px; }
+  #slide-counter { font-size: 11px; color: rgba(254,243,199,.6); min-width: 40px; text-align: center; }
 
   /* ── Mode toggle ── */
   .mode-pill {
@@ -187,6 +173,59 @@
   .ring-wrap { position: relative; display: inline-flex; align-items: center; justify-content: center; }
   .ring-wrap svg { transform: rotate(-90deg); }
   .ring-label { position: absolute; text-align: center; }
+
+  /* ── Unified Bottom Bar: Talking Points + Navigation ── */
+  #bottom-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 300;
+    background: #2d1600;
+    border-top: 3px solid #f59e0b;
+    height: 56px;
+    display: flex; align-items: center; gap: 0;
+    overflow: hidden;
+  }
+  /* Left accent stripe */
+  #bottom-bar::before {
+    content: ""; display: block; width: 5px; height: 100%;
+    background: #f59e0b; flex-shrink: 0;
+  }
+  #tp-label {
+    font-size: 9px; font-weight: 800; letter-spacing: 0.13em; text-transform: uppercase;
+    color: #f59e0b; white-space: nowrap; flex-shrink: 0;
+    padding: 0 12px 0 10px;
+    border-right: 1px solid rgba(245,158,11,.3);
+    line-height: 1.2;
+  }
+  #tp-list {
+    flex: 1; display: flex; align-items: center; gap: 0 0;
+    padding: 0 12px; overflow: hidden;
+  }
+  #tp-list .tp-pt {
+    font-size: 11.5px; color: #fef3c7; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+    padding: 0 14px 0 0;
+    display: flex; align-items: center; gap: 5px;
+    flex-shrink: 1; min-width: 0;
+  }
+  #tp-list .tp-pt::before {
+    content: "◆"; color: #f59e0b; font-size: 7px; flex-shrink: 0;
+  }
+  /* Nav controls on the right */
+  #bar-nav {
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 14px; border-left: 1px solid rgba(245,158,11,.3);
+    flex-shrink: 0;
+  }
+  #bar-nav button {
+    background: none; border: 1px solid rgba(245,158,11,.4); color: #fef3c7;
+    cursor: pointer; font-size: 12px; font-weight: 600;
+    padding: 4px 10px; border-radius: 6px; transition: all .15s;
+    white-space: nowrap;
+  }
+  #bar-nav button:hover { background: rgba(245,158,11,.15); color: #fff; border-color: #f59e0b; }
+  #bar-nav button:disabled { opacity: .25; cursor: not-allowed; }
+
+  /* Offset slide content so it doesn't hide behind the bar */
+  .slide { padding-bottom: 64px; }
 </style>
 </head>
 <body>
@@ -1295,12 +1334,16 @@
 
 </div><!-- end #deck -->
 
-<!-- ── Navigation ── -->
-<div id="nav">
-  <button id="btn-prev" onclick="go(-1)" disabled>← Prev</button>
-  <div class="dot-track" id="dots"></div>
-  <span id="slide-counter">1 / 15</span>
-  <button id="btn-next" onclick="go(1)">Next →</button>
+<!-- ── Unified Bottom Bar: Talking Points + Navigation ── -->
+<div id="bottom-bar">
+  <div id="tp-label">💬 TALKING<br/>POINTS</div>
+  <div id="tp-list"></div>
+  <div id="bar-nav">
+    <div class="dot-track" id="dots"></div>
+    <span id="slide-counter">1 / 15</span>
+    <button id="btn-prev" onclick="go(-1)" disabled>← Prev</button>
+    <button id="btn-next" onclick="go(1)">Next →</button>
+  </div>
 </div>
 
 <script>
@@ -1308,10 +1351,46 @@ const slides = document.querySelectorAll('.slide');
 const total = slides.length;
 let current = 0;
 
-const dotsEl = document.getElementById('dots');
+const dotsEl  = document.getElementById('dots');
 const counter = document.getElementById('slide-counter');
 const btnPrev = document.getElementById('btn-prev');
 const btnNext = document.getElementById('btn-next');
+const tpList  = document.getElementById('tp-list');
+const tpLabel = document.getElementById('tp-label');
+
+// ── Talking points per slide (0-indexed, matches slide order) ──
+const TP = [
+  // 0 — Title
+  [],
+  // 1 — Agenda
+  [],
+  // 2 — Demo Options
+  ["Use Pre-Filled for leadership (instant results, no waiting)", "Use Live Entry to prove AI agent capability in real-time", "Pre-Filled data includes 3 enterprise orgs: US Bank, Telstra Health, ING Bank", "Both modes use the same platform — just different data starting points"],
+  // 3 — Architecture
+  ["Built on production-grade stack: Next.js 15, FastAPI, PostgreSQL 18 + pgvector", "18 LangGraph agents each own a specific transformation domain", "RAG pipeline: BM25 keyword + vector semantic hybrid search", "Multi-tenant from day one — each org gets fully isolated data"],
+  // 4 — Platform Modules
+  ["End-to-end lifecycle: Discover → Map → Plan → Execute → Govern", "Each module feeds the next — Discovery feeds VSM, VSM feeds Future State", "Context Hub grounds all AI output in your own uploaded documents", "Accuracy Dashboard provides full transparency — no black box AI"],
+  // 5 — Dashboard (Step 1)
+  ["Dashboard shows KPI summary: products, capabilities, functionalities counts", "Risk heatmap visible immediately — highlights CRITICAL items needing attention", "Org switcher at top right — 3 enterprise orgs ready to explore", "Each org is fully independent with its own data (multi-tenant architecture)"],
+  // 6 — Discovery (Step 2)
+  ["Each entity has a confidence score (78–97%) + evidence source attribution", "Source triangulation across 8 types: GitHub, OpenAPI, DB schema, tests, docs", "Human-in-the-loop: review, edit, or delete inline before approving each pass", "4 views: Products list, Drilldown tree, Hierarchy tree, Product Catalog (exec summary)"],
+  // 7 — VSM (Step 3)
+  ["Process Time, Wait Time, Lead Time, Flow Efficiency calculated per capability", "Mermaid diagrams auto-generated — visual flow map for every capability", "Step classification: Value-Adding vs Bottleneck vs Waste vs Waiting", "100% capability coverage in seeded data — 78 capabilities, 78 Mermaid diagrams"],
+  // 8 — Future State (Step 4)
+  ["AI reads uploaded VSM benchmarks to ground projections in industry data", '"Benchmark-grounded" badge appears automatically when benchmark docs are present', "Three projection bands: Conservative / Expected / Optimistic — not arbitrary guesses", "Automation mix shows RPA vs AI/ML vs Agent vs Conversational breakdown per product"],
+  // 9 — Risk & Compliance (Step 5)
+  ["SHA-256 chained audit trail — tamper-proof, every state change recorded", "Compliance frameworks mapped per org: SOX, FDIC, GLBA, PCI-DSS for US Bank", "Risk score ≥ 8.0 automatically blocks product transformation — hard gate", "Each risk item includes mitigation plan, owner, timeline, and evidence links"],
+  // 10 — Accuracy (Step 6)
+  ["Accuracy badges are visible on EVERY module page header — always in context", "Discovery scores high (~85%) due to confidence scoring + source diversity", "Risk scores lower (~35%) because few assessments run yet — shows room to improve", "Action Plan auto-generates prioritised steps with direct links to each module"],
+  // 11 — Live Entry (Step 7)
+  ["Login as live@transformhub.ai / live1234 for clean blank-slate org", "Paste any GitHub repo URL or public website — agents analyse it live", "Watch streaming responses as products, capabilities, functionalities appear in real-time", "After Discovery, run VSM Agent — watch accuracy scores rise from zero on Accuracy page"],
+  // 12 — Talking Points Summary
+  [],
+  // 13 — Pre-Demo Checklist
+  ["Run: curl localhost:8000/api/v1/health — must return {status: ok}", "Seed: DATABASE_URL=... npx tsx prisma/seed.ts (from nextjs-app/)", "If port 3000 is taken: kill $(lsof -ti:3000) to free it", "Open incognito tab, login as demo@transformhub.ai, select US Bank org"],
+  // 14 — End
+  [],
+];
 
 // Build dots
 for (let i = 0; i < total; i++) {
@@ -1319,6 +1398,15 @@ for (let i = 0; i < total; i++) {
   d.className = 'dot' + (i === 0 ? ' active' : '');
   d.onclick = () => goTo(i);
   dotsEl.appendChild(d);
+}
+
+function renderTP(idx) {
+  const pts = TP[idx] || [];
+  if (!pts.length) {
+    tpList.innerHTML = '<span class="tp-pt" style="color:rgba(254,243,199,.35); font-style:italic;">No talking points for this slide</span>';
+  } else {
+    tpList.innerHTML = pts.map(p => `<span class="tp-pt">${p}</span>`).join('');
+  }
 }
 
 function goTo(n) {
@@ -1330,6 +1418,7 @@ function goTo(n) {
   counter.textContent = `${current + 1} / ${total}`;
   btnPrev.disabled = current === 0;
   btnNext.disabled = current === total - 1;
+  renderTP(current);
 }
 
 function go(dir) { goTo(current + dir); }
@@ -1340,6 +1429,9 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Home') goTo(0);
   if (e.key === 'End')  goTo(total - 1);
 });
+
+// Init on load
+renderTP(0);
 </script>
 </body>
 </html>

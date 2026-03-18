@@ -2,6 +2,8 @@ import logging
 from typing import Any
 
 from app.agents.base import BaseAgent
+from app.services.output_validation import validate_or_warn
+from app.services.hallucination_detector import detect_hallucinations
 from app.agents.discovery.graph import DiscoveryAgent
 from app.agents.lean_vsm.graph import LeanVsmAgent
 from app.agents.risk_compliance.graph import RiskComplianceAgent
@@ -70,5 +72,21 @@ async def run_agent(agent_type: str, input_data: dict[str, Any]) -> dict[str, An
     except Exception as exc:
         logger.error("Agent '%s' failed: %s", agent_type, exc, exc_info=True)
         return {"error": str(exc)}
+
+    # P1: Validate output schema; inject warnings if contract violated
+    if isinstance(result, dict) and "error" not in result:
+        result = validate_or_warn(agent_type, result)
+
+    # P4: Hallucination detection — runs after validation, advisory only
+    if isinstance(result, dict) and "error" not in result:
+        result = detect_hallucinations(agent_type, result)
+        flags = result.get("_hallucination_flags", {})
+        if flags.get("critical", 0) > 0:
+            logger.warning(
+                "Agent '%s' output has %d critical hallucination flag(s): %s",
+                agent_type,
+                flags["critical"],
+                [f["reason"] for f in flags.get("flags", []) if f["severity"] == "critical"],
+            )
 
     return result

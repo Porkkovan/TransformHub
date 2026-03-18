@@ -15,7 +15,9 @@ class AgentState(TypedDict, total=False):
     brd: str
     # VSM-specific
     capabilities_data: list[dict]
+    step_name_to_id: dict[str, str]
     flow_analysis: dict
+    code_signals: dict            # Tier-2a: code-extracted timing signals per step
     metrics: dict
     mermaid_source: str
     # Risk-specific

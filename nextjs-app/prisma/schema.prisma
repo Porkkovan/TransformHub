@@ -15,8 +15,12 @@ model User {
   name           String?
   email          String   @unique
   passwordHash   String?  @map("password_hash")
-  role           String   @default("MEMBER")
+  // RBAC: VIEWER (read-only) | ANALYST (run agents) | ADMIN (manage org) | SUPER_ADMIN (platform-wide)
+  role           String   @default("ANALYST")
   organizationId String?  @map("organization_id")
+  mfaSecret      String?  @map("mfa_secret")       // TOTP secret (encrypted at rest)
+  mfaEnabled     Boolean  @default(false) @map("mfa_enabled")
+  lastLoginAt    DateTime? @map("last_login_at")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
@@ -25,6 +29,8 @@ model User {
   accounts        Account[]
   approvalReviews ApprovalRequest[] @relation("reviewer")
   feedbacks       AgentFeedback[]
+  apiKeys         ApiKey[]
+  timingOverrides TimingOverride[]
 
   @@map("users")
 }
@@ -87,6 +93,11 @@ model Organization {
   contextApplications   ContextApplication[]
   techTrends            TechTrend[]
   externalIntegrations  ExternalIntegration[]
+  llmBudget             OrgLlmBudget?
+  llmUsageRecords       OrgLlmUsage[]
+  apiKeys               ApiKey[]
+  ssoConfig             SsoConfig?
+  benchmarks            OrgBenchmark[]
 
   @@map("organizations")
 }
@@ -152,15 +163,23 @@ model DigitalCapability {
 }
 
 model Functionality {
-  id                  String   @id @default(uuid())
-  name                String
-  description         String?
-  sourceFiles         String[] @map("source_files")
-  digitalCapabilityId String   @map("digital_capability_id")
-  confidence          Float?
-  sources             String[]
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @updatedAt @map("updated_at")
+  id                    String   @id @default(uuid())
+  name                  String
+  description           String?
+  sourceFiles           String[] @map("source_files")
+  digitalCapabilityId   String   @map("digital_capability_id")
+  confidence            Float?
+  sources               String[]
+  // Timing fields — populated by Discovery L3 agent
+  estimatedCycleTimeMin Float?   @map("estimated_cycle_time_min")
+  estimatedWaitTimeMin  Float?   @map("estimated_wait_time_min")
+  automationPotential   String?  @map("automation_potential") // "high" | "medium" | "low"
+  manualTouchpoints     Int?     @map("manual_touchpoints")
+  // Timing provenance
+  timingSource     String?  @map("timing_source")     // "llm_estimated"|"code_signals"|"jira_measured"|"manual_override"
+  timingConfidence Float?   @map("timing_confidence") // 0.0–1.0
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
 
   digitalCapability DigitalCapability @relation(fields: [digitalCapabilityId], references: [id], onDelete: Cascade)
   personaMappings   PersonaMapping[]
@@ -184,14 +203,29 @@ model ProductGroup {
 }
 
 model ValueStreamStep {
-  id             String   @id @default(uuid())
-  name           String
-  description    String?
-  stepOrder      Int      @map("step_order")
-  stepType       String   @default("process") @map("step_type")
-  productGroupId String   @map("product_group_id")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(uuid())
+  name            String
+  description     String?
+  stepOrder       Int      @map("step_order")
+  stepType        String   @default("process") @map("step_type")
+  productGroupId  String   @map("product_group_id")
+  // VSM timing — populated by Lean VSM agent
+  processTimeHrs  Float?   @map("process_time_hrs")
+  waitTimeHrs     Float?   @map("wait_time_hrs")
+  leadTimeHrs     Float?   @map("lead_time_hrs")
+  flowEfficiency  Float?   @map("flow_efficiency")
+  classification  String?  // "value_adding" | "bottleneck" | "waste"
+  improvementNote String?  @map("improvement_note")
+  // Timing provenance — where the timing data came from
+  timingSource     String?  @map("timing_source")     // "llm_estimated"|"code_signals"|"jira_measured"|"apm_measured"|"doc_extracted"|"manual_override"
+  timingConfidence Float?   @map("timing_confidence") // 0.0–1.0
+  // Future-state targets — set by Future State Vision agent or manual override
+  targetProcessTimeHrs Float?  @map("target_process_time_hrs")
+  targetWaitTimeHrs    Float?  @map("target_wait_time_hrs")
+  targetClassification String? @map("target_classification")
+  improvementPhase     String? @map("improvement_phase") // "now"|"next"|"later"
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   productGroup ProductGroup @relation(fields: [productGroupId], references: [id], onDelete: Cascade)
 
@@ -630,4 +664,130 @@ model NotificationLog {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("notification_logs")
+}
+
+// ─── P0: API Key Management ──────────────────────────────────────────────────
+
+model ApiKey {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  createdBy      String    @map("created_by")
+  name           String
+  keyHash        String    @unique @map("key_hash")   // SHA-256 of the full key
+  keyPrefix      String    @map("key_prefix")         // first 8 chars for display
+  scopes         String[]  @default(["agents:run"])   // "agents:run"|"data:read"|"admin"
+  expiresAt      DateTime? @map("expires_at")
+  lastUsedAt     DateTime? @map("last_used_at")
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creator      User         @relation(fields: [createdBy], references: [id])
+
+  @@index([organizationId])
+  @@index([keyHash])
+  @@map("api_keys")
+}
+
+// ─── P0: SSO Configuration ────────────────────────────────────────────────────
+
+model SsoConfig {
+  id             String   @id @default(uuid())
+  organizationId String   @unique @map("organization_id")
+  provider       String   // "okta"|"azure_ad"|"google_workspace"|"saml_generic"
+  clientId       String   @map("client_id")
+  clientSecret   String   @map("client_secret")  // encrypted at rest
+  tenantId       String?  @map("tenant_id")
+  issuerUrl      String?  @map("issuer_url")
+  domain         String?  // restrict to this email domain
+  defaultRole    String   @default("ANALYST") @map("default_role")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("sso_configs")
+}
+
+// ─── P0: Per-Org LLM Budget & Usage Tracking ────────────────────────────────
+
+model OrgLlmBudget {
+  id               String   @id @default(uuid())
+  organizationId   String   @unique @map("organization_id")
+  monthlyTokenCap  Int?     @map("monthly_token_cap")   // null = unlimited
+  monthlySpendCap  Float?   @map("monthly_spend_cap")   // USD cap, null = unlimited
+  alertThreshold   Float    @default(0.8) @map("alert_threshold") // alert at 80%
+  hardCapEnabled   Boolean  @default(false) @map("hard_cap_enabled")
+  currentPeriodStart DateTime @map("current_period_start")
+  // Per-org Anthropic API key. When set, agent executions for this org use
+  // this key instead of the global ANTHROPIC_API_KEY env var.
+  // Never returned in list endpoints — only settable via admin API.
+  anthropicApiKey  String?  @map("anthropic_api_key")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  usageRecords OrgLlmUsage[]
+
+  @@map("org_llm_budgets")
+}
+
+model OrgLlmUsage {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  budgetId       String   @map("budget_id")
+  agentType      String   @map("agent_type")
+  model          String
+  inputTokens    Int      @map("input_tokens")
+  outputTokens   Int      @map("output_tokens")
+  costUsd        Float    @map("cost_usd")
+  executionId    String?  @map("execution_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  budget       OrgLlmBudget @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([budgetId])
+  @@map("org_llm_usage")
+}
+
+// ─── P1: Manual Timing Overrides with Audit Trail ───────────────────────────
+
+model TimingOverride {
+  id           String   @id @default(uuid())
+  entityType   String   @map("entity_type")  // "value_stream_step"|"functionality"
+  entityId     String   @map("entity_id")
+  field        String   // which timing field was overridden
+  previousValue Float?  @map("previous_value")
+  newValue     Float    @map("new_value")
+  overrideNote String?  @map("override_note")
+  overriddenBy String   @map("overridden_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [overriddenBy], references: [id])
+
+  @@index([entityType, entityId])
+  @@map("timing_overrides")
+}
+
+// ─── P2: Cross-Org Benchmark Aggregation ────────────────────────────────────
+
+model OrgBenchmark {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  industryType   String   @map("industry_type")
+  metricName     String   @map("metric_name")    // e.g. "avg_flow_efficiency"
+  metricValue    Float    @map("metric_value")
+  agentType      String   @map("agent_type")
+  periodMonth    String   @map("period_month")   // "2026-03" format
+  isAnonymized   Boolean  @default(true) @map("is_anonymized")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([industryType, metricName])
+  @@index([periodMonth])
+  @@map("org_benchmarks")
 }

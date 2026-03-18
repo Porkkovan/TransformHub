@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: transformhub
+  labels:
+    app.kubernetes.io/name: transformhub
+    app.kubernetes.io/managed-by: kustomize

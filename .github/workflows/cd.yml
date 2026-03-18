@@ -1,0 +1,87 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/transformhub
+
+jobs:
+  publish-images:
+    name: Build & push Docker images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata (agent-service)
+        id: meta-agent
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-agent-service
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=sha,prefix=sha-,format=short
+
+      - name: Build & push agent-service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./agent-service
+          push: true
+          tags: ${{ steps.meta-agent.outputs.tags }}
+          labels: ${{ steps.meta-agent.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract metadata (nextjs-app)
+        id: meta-nextjs
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-nextjs
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=sha,prefix=sha-,format=short
+
+      - name: Build & push nextjs-app
+        uses: docker/build-push-action@v5
+        with:
+          context: ./nextjs-app
+          push: true
+          tags: ${{ steps.meta-nextjs.outputs.tags }}
+          labels: ${{ steps.meta-nextjs.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-staging:
+    name: Deploy to staging
+    needs: publish-images
+    runs-on: ubuntu-latest
+    environment: staging
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy via SSH
+        # Replace with your deployment mechanism (Fly.io, Railway, ECS, K8s, etc.)
+        run: |
+          echo "Deploy step — configure SSH_HOST, SSH_KEY, SSH_USER secrets and add deploy commands"
+          # Example for docker-compose on a VM:
+          # ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+          #   "cd /opt/transformhub && docker-compose pull && docker-compose up -d --remove-orphans"
+        env:
+          IMAGE_TAG: sha-${{ github.sha }}

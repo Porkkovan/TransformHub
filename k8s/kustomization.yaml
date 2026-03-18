@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: transformhub
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.yaml
+  - postgres.yaml
+  - redis.yaml
+  - agent-service.yaml
+  - nextjs-app.yaml
+  - ingress.yaml
+
+# Image tag overrides — set via CI/CD:
+# kustomize edit set image ghcr.io/transformhub/agent-service=ghcr.io/transformhub/agent-service:v1.2.3
+images:
+  - name: ghcr.io/transformhub/agent-service
+    newTag: latest
+  - name: ghcr.io/transformhub/nextjs-app
+    newTag: latest
+
+# Common labels applied to all resources
+commonLabels:
+  app.kubernetes.io/part-of: transformhub
+  app.kubernetes.io/managed-by: kustomize

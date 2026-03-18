@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.core.database import db_pool
+from app.core.database import db_pool, read_pool
 from app.core.redis import redis_pool
 from app.core.logging import setup_logging
 from app.core.tracing import setup_tracing
@@ -21,6 +21,7 @@ from app.api.approvals import router as approvals_router
 from app.api.feedback import router as feedback_router
 from app.api.notifications import router as notifications_router
 from app.api.persona_inference import router as persona_inference_router
+from app.api.process_mining import router as process_mining_router
 
 load_dotenv()
 
@@ -31,9 +32,11 @@ setup_tracing()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await db_pool.connect()
+    await read_pool.connect()
     await redis_pool.connect()
     yield
     await redis_pool.disconnect()
+    await read_pool.disconnect()
     await db_pool.disconnect()
 
 
@@ -68,3 +71,4 @@ app.include_router(approvals_router, prefix="/api/v1", dependencies=_auth_deps)
 app.include_router(feedback_router, prefix="/api/v1", dependencies=_auth_deps)
 app.include_router(notifications_router, prefix="/api/v1", dependencies=_auth_deps)
 app.include_router(persona_inference_router, prefix="/api/v1", dependencies=_auth_deps)
+app.include_router(process_mining_router, prefix="/api/v1", dependencies=_auth_deps)

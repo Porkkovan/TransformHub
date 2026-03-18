@@ -16,6 +16,7 @@ from app.services.event_bus import event_bus
 from app.services.retry import RetryPolicy, execute_with_retry
 from app.services.dead_letter import dead_letter_store
 from app.services.queue import get_redis_settings
+from app.services.memory_pruning import prune_agent_memories
 
 logger = logging.getLogger(__name__)
 
@@ -86,8 +87,42 @@ async def shutdown(ctx: dict) -> None:
     logger.info("Worker stopped")
 
 
+async def scheduled_memory_prune(ctx: dict) -> None:
+    """Weekly task: prune stale / excess agent memories."""
+    try:
+        result = await prune_agent_memories()
+        logger.info("Memory prune complete: %s", result)
+    except Exception as exc:
+        logger.error("Scheduled memory prune failed: %s", exc)
+
+
+async def scheduled_period_reset(ctx: dict) -> None:
+    """Monthly: reset LLM budget period_start for all orgs (1st of month, 00:05 UTC)."""
+    try:
+        from datetime import datetime, timezone
+        new_period = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        await db_pool.execute(
+            """
+            UPDATE org_llm_budgets
+            SET current_period_start = $1, updated_at = NOW()
+            WHERE current_period_start < $1
+            """,
+            new_period,
+        )
+        logger.info("LLM budget period reset to %s", new_period.isoformat())
+    except Exception as exc:
+        logger.error("Scheduled period reset failed: %s", exc)
+
+
 class WorkerSettings:
     functions = [execute_agent_job]
+    cron_jobs = [
+        # Weekly Sunday 02:00 UTC — prune stale memories
+        cron(scheduled_memory_prune, weekday=6, hour=2, minute=0),
+        # Monthly 1st 00:05 UTC — reset LLM budget period
+        cron(scheduled_period_reset, month={1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+             day=1, hour=0, minute=5),
+    ]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = get_redis_settings()

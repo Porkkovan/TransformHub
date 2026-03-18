@@ -36,6 +36,13 @@ MODEL_CONFIGS: dict[str, dict[str, Any]] = {
         "cost_per_1k_output": 0.005,
         "max_tokens": 8192,
     },
+    "claude-haiku-4-5": {
+        "provider": "anthropic",
+        "model_id": "claude-haiku-4-5-20251001",
+        "cost_per_1k_input": 0.0008,
+        "cost_per_1k_output": 0.004,
+        "max_tokens": 8192,
+    },
     # Azure OpenAI models
     "gpt-4o-azure": {
         "provider": "azure_openai",
@@ -103,6 +110,10 @@ AGENT_MODEL_DEFAULTS: dict[str, str] = {
 
 # The default model when no agent-specific override is configured
 DEFAULT_MODEL = "gpt-4o-azure"
+
+# Cheap model for lightweight formatting/transformation tasks (Mermaid, JSON reshaping, etc.)
+# Uses claude-haiku-4-5 which is ~10-15x cheaper than Sonnet for non-reasoning tasks.
+LIGHT_TASK_MODEL = "claude-haiku-4-5"
 
 
 def get_model_config(model_name: str) -> dict[str, Any]:

@@ -15,13 +15,21 @@ import logging
 import os
 import time
 from collections import defaultdict
+from contextvars import ContextVar
 from typing import Any, Optional
 
-from app.services.claude_client import claude_client
+from app.services.circuit_breaker import CircuitBreakerOpen, get_breaker
 from app.services.llm_config import (
     DEFAULT_MODEL,
     MODEL_CONFIGS,
     get_model_config,
+)
+
+# Per-request org API key override.
+# Set this context variable before calling llm_router to use an org-specific
+# Anthropic key instead of the global ANTHROPIC_API_KEY env var.
+_org_anthropic_key: ContextVar[Optional[str]] = ContextVar(
+    "_org_anthropic_key", default=None
 )
 
 # ---------------------------------------------------------------------------
@@ -140,22 +148,26 @@ class LLMRouter:
         system: str,
         max_tokens: int,
     ) -> str:
-        """Send the request to the correct provider based on model config."""
+        """Send the request to the correct provider, guarded by circuit breaker."""
         config = get_model_config(model_name)
         provider = config["provider"]
+        breaker = get_breaker(provider)
 
         start = time.monotonic()
 
-        if provider == "anthropic":
-            result = await self._call_anthropic(config, prompt, system, max_tokens)
-        elif provider == "azure_openai":
-            result = await self._call_azure_openai(config, prompt, system, max_tokens)
-        elif provider == "openai":
-            result = await self._call_openai(config, prompt, system, max_tokens)
-        elif provider == "google":
-            result = await self._call_google(config, prompt, system, max_tokens)
-        else:
-            raise ValueError(f"Unknown provider: {provider}")
+        async def _call():
+            if provider == "anthropic":
+                return await self._call_anthropic(config, prompt, system, max_tokens)
+            elif provider == "azure_openai":
+                return await self._call_azure_openai(config, prompt, system, max_tokens)
+            elif provider == "openai":
+                return await self._call_openai(config, prompt, system, max_tokens)
+            elif provider == "google":
+                return await self._call_google(config, prompt, system, max_tokens)
+            else:
+                raise ValueError(f"Unknown provider: {provider}")
+
+        result = await breaker.call(_call)
 
         elapsed = time.monotonic() - start
         self._track(model_name, prompt, result, config)
@@ -175,21 +187,26 @@ class LLMRouter:
         max_tokens: int,
         exclude: str,
     ) -> str:
-        """Try Azure OpenAI first, then standard OpenAI, then Claude as final fallback."""
-        azure_key = os.environ.get("AZURE_OPENAI_API_KEY")
-        if azure_key and exclude != "gpt-4o-azure":
-            logger.info("Falling back to gpt-4o-azure")
-            return await self._dispatch("gpt-4o-azure", prompt, system, max_tokens)
+        """Try Azure OpenAI first, then standard OpenAI, then Claude as final fallback.
+        Skips providers whose circuit breaker is OPEN."""
+        from app.services.circuit_breaker import CircuitState, get_breaker
 
-        openai_key = os.environ.get("OPENAI_API_KEY")
-        if openai_key and exclude != "gpt-4o":
-            logger.info("Falling back to gpt-4o")
-            return await self._dispatch("gpt-4o", prompt, system, max_tokens)
-
-        anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
-        if anthropic_key and exclude != "claude-sonnet-4-5":
-            logger.info("Falling back to claude-sonnet-4-5")
-            return await self._dispatch("claude-sonnet-4-5", prompt, system, max_tokens)
+        candidates = [
+            ("gpt-4o-azure",       "AZURE_OPENAI_API_KEY", "azure_openai"),
+            ("gpt-4o",             "OPENAI_API_KEY",        "openai"),
+            ("claude-sonnet-4-5",  "ANTHROPIC_API_KEY",     "anthropic"),
+        ]
+        for model_name, env_key, provider in candidates:
+            if model_name == exclude:
+                continue
+            if not os.environ.get(env_key):
+                continue
+            breaker = get_breaker(provider)
+            if breaker.state == CircuitState.OPEN:
+                logger.warning("Skipping fallback to %s — circuit OPEN", model_name)
+                continue
+            logger.info("Falling back to %s", model_name)
+            return await self._dispatch(model_name, prompt, system, max_tokens)
 
         raise RuntimeError("All LLM providers failed and no fallback is available")
 
@@ -204,12 +221,26 @@ class LLMRouter:
         system: str,
         max_tokens: int,
     ) -> str:
-        """Delegate to the existing ClaudeClient singleton."""
-        return await claude_client.analyze(
-            prompt=prompt,
-            system=system,
+        """Call the Anthropic Messages API directly.
+
+        Uses the per-request org API key (set via _org_anthropic_key context var)
+        when available, falling back to the global ANTHROPIC_API_KEY env var.
+        This avoids the circular delegation through ClaudeClient.
+        """
+        import anthropic
+
+        api_key = _org_anthropic_key.get() or os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise RuntimeError("ANTHROPIC_API_KEY is not set")
+
+        client = anthropic.AsyncAnthropic(api_key=api_key)
+        message = await client.messages.create(
+            model=config["model_id"],
             max_tokens=min(max_tokens, config["max_tokens"]),
+            system=system,
+            messages=[{"role": "user", "content": prompt}],
         )
+        return message.content[0].text
 
     async def _call_azure_openai(
         self,
@@ -344,3 +375,21 @@ class LLMRouter:
 
 # Module-level singleton
 llm_router = LLMRouter()
+
+
+def set_org_anthropic_key(api_key: Optional[str]) -> None:
+    """Set a per-request Anthropic API key for the current async context.
+
+    Call this before invoking llm_router.analyze() to use an org-specific key.
+    The context variable is scoped to the current asyncio Task, so it won't
+    bleed into other concurrent requests.
+
+    Example::
+
+        set_org_anthropic_key(org.anthropic_api_key)
+        try:
+            result = await llm_router.analyze(prompt)
+        finally:
+            set_org_anthropic_key(None)
+    """
+    _org_anthropic_key.set(api_key)

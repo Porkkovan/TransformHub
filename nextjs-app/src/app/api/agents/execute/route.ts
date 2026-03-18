@@ -5,6 +5,7 @@ import { executeAgent } from "@/lib/agent-client";
 import { executeAgentSchema, formatZodError } from "@/lib/validations";
 import { requireAuth } from "@/lib/api-auth";
 import { generateEmbedding } from "@/lib/embeddings";
+import { sanitizeInputData } from "@/lib/api-validation";
 
 /**
  * Multi-query expansion per agent type for hybrid semantic retrieval.
@@ -266,6 +267,9 @@ export async function POST(request: NextRequest) {
         }));
       }
     }
+
+    // Sanitize all user-supplied string values to prevent prompt injection
+    enrichedInput = sanitizeInputData(enrichedInput) as typeof enrichedInput;
 
     // Create the execution record in the database
     const execution = await prisma.agentExecution.create({

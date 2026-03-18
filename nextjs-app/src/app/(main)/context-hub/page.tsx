@@ -28,7 +28,6 @@ const categoryFilterOptions = [
   { value: "", label: "All Categories" },
   { value: "CURRENT_STATE", label: "Current State" },
   { value: "FUTURE_STATE", label: "Future State" },
-  { value: "COMPETITOR", label: "Competitor" },
   { value: "VSM_BENCHMARKS", label: "VSM Benchmarks" },
   { value: "TRANSFORMATION_CASE_STUDIES", label: "Transformation Case Studies" },
   { value: "ARCHITECTURE_STANDARDS", label: "Architecture Standards" },

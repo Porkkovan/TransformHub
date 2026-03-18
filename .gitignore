@@ -44,3 +44,9 @@ backups/
 
 # SSL certificates
 nginx/ssl/
+
+# Uploaded user files (runtime content, not source code)
+nextjs-app/uploads/
+
+# Office temp/lock files
+docs/~$*

@@ -1,1055 +1,873 @@
 """
 TransformHub – Senior Leadership Demo Deck
-Generates a polished .pptx with white backgrounds, brand colours,
-talking points and supporting data on every slide.
+Talking points appear TWO ways:
+  1. As a clearly styled yellow/amber NOTES STRIP at the bottom of every slide
+  2. In the PowerPoint Notes pane (visible in Presenter View)
+White slide backgrounds, indigo/cyan brand colours.
 """
 
 from pptx import Presentation
 from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
-from pptx.util import Inches, Pt
-from pptx.chart.data import ChartData
-from pptx.enum.chart import XL_CHART_TYPE
-import copy
 
 # ── Brand palette ──────────────────────────────────────────────────────────
-INDIGO      = RGBColor(0x63, 0x66, 0xF1)   # primary accent
-CYAN        = RGBColor(0x06, 0xB6, 0xD4)   # secondary accent
-GREEN       = RGBColor(0x16, 0xA3, 0x4A)
-AMBER       = RGBColor(0xD9, 0x77, 0x06)
-RED         = RGBColor(0xDC, 0x26, 0x26)
-DARK        = RGBColor(0x0F, 0x17, 0x2A)   # near-black
-MID_GRAY    = RGBColor(0x4B, 0x55, 0x63)
-LIGHT_GRAY  = RGBColor(0xF3, 0xF4, 0xF6)
-WHITE       = RGBColor(0xFF, 0xFF, 0xFF)
-SLIDE_BG    = RGBColor(0xFF, 0xFF, 0xFF)   # white background
-ACCENT_BG   = RGBColor(0xEE, 0xF2, 0xFF)  # very light indigo tint
-CYAN_BG     = RGBColor(0xEC, 0xFE, 0xFF)
-GREEN_BG    = RGBColor(0xF0, 0xFD, 0xF4)
-AMBER_BG    = RGBColor(0xFF, 0xFB, 0xEB)
-RED_BG      = RGBColor(0xFE, 0xF2, 0xF2)
+INDIGO   = RGBColor(0x4F, 0x46, 0xE5)
+CYAN     = RGBColor(0x06, 0xB6, 0xD4)
+GREEN    = RGBColor(0x16, 0xA3, 0x4A)
+AMBER    = RGBColor(0xD9, 0x77, 0x06)
+RED      = RGBColor(0xDC, 0x26, 0x26)
+PURPLE   = RGBColor(0x7C, 0x3A, 0xED)
+DARK     = RGBColor(0x1E, 0x29, 0x3B)
+MID      = RGBColor(0x47, 0x55, 0x69)
+LGRAY    = RGBColor(0xF1, 0xF5, 0xF9)
+WHITE    = RGBColor(0xFF, 0xFF, 0xFF)
+TP_BG    = RGBColor(0xFF, 0xF7, 0xED)   # amber tint for talking points strip
+TP_BORD  = RGBColor(0xF5, 0x9E, 0x0B)
+INDBG    = RGBColor(0xEE, 0xF2, 0xFF)
+CYANBG   = RGBColor(0xEC, 0xFE, 0xFF)
+GREENBG  = RGBColor(0xF0, 0xFD, 0xF4)
+AMBERBG  = RGBColor(0xFF, 0xFB, 0xEB)
+REDBG    = RGBColor(0xFE, 0xF2, 0xF2)
 
-# ── Slide size (widescreen 16:9) ───────────────────────────────────────────
 W = Inches(13.33)
 H = Inches(7.5)
+
+# Vertical zones (inches)
+CONTENT_TOP    = 1.15   # content starts below header
+CONTENT_BOTTOM = 5.10   # content ends here
+TP_TOP         = 5.20   # talking points strip starts
+TP_H           = 1.95   # height of TP strip → ends at 7.15
+FOOTER_TOP     = 7.18
 
 prs = Presentation()
 prs.slide_width  = W
 prs.slide_height = H
-
-BLANK = prs.slide_layouts[6]   # completely blank layout
+BLANK = prs.slide_layouts[6]
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Helper utilities
+# Core drawing helpers
 # ══════════════════════════════════════════════════════════════════════════════
 
-def add_slide():
+def new_slide():
     sl = prs.slides.add_slide(BLANK)
-    # White background
-    bg = sl.background
-    fill = bg.fill
-    fill.solid()
-    fill.fore_color.rgb = SLIDE_BG
+    sl.background.fill.solid()
+    sl.background.fill.fore_color.rgb = WHITE
     return sl
 
-
-def box(slide, x, y, w, h,
-        fill_color=None, line_color=None, line_width=Pt(0.75), radius=None):
-    """Add a filled/outlined rectangle."""
-    from pptx.util import Emu
-    shape = slide.shapes.add_shape(
-        1,  # MSO_SHAPE_TYPE.RECTANGLE
-        Inches(x), Inches(y), Inches(w), Inches(h)
-    )
-    if fill_color:
-        shape.fill.solid()
-        shape.fill.fore_color.rgb = fill_color
+def rect(sl, x, y, w, h, fill=None, line=None, lw=Pt(0.75)):
+    sh = sl.shapes.add_shape(1, Inches(x), Inches(y), Inches(w), Inches(h))
+    if fill:
+        sh.fill.solid(); sh.fill.fore_color.rgb = fill
     else:
-        shape.fill.background()
-    if line_color:
-        shape.line.color.rgb = line_color
-        shape.line.width = line_width
+        sh.fill.background()
+    if line:
+        sh.line.color.rgb = line; sh.line.width = lw
     else:
-        shape.line.fill.background()
-    return shape
+        sh.line.fill.background()
+    return sh
 
+def oval(sl, x, y, w, h, fill):
+    sh = sl.shapes.add_shape(9, Inches(x), Inches(y), Inches(w), Inches(h))
+    sh.fill.solid(); sh.fill.fore_color.rgb = fill
+    sh.line.fill.background()
+    return sh
 
-def txt(slide, text, x, y, w, h,
-        size=12, bold=False, color=DARK, align=PP_ALIGN.LEFT,
-        italic=False, wrap=True):
-    """Add a text box."""
-    txBox = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
-    tf = txBox.text_frame
-    tf.word_wrap = wrap
-    p = tf.paragraphs[0]
-    p.alignment = align
-    run = p.add_run()
-    run.text = text
-    run.font.size = Pt(size)
-    run.font.bold = bold
-    run.font.italic = italic
-    run.font.color.rgb = color
-    return txBox
+def tb(sl, text, x, y, w, h, sz=11, bold=False, color=DARK,
+       align=PP_ALIGN.LEFT, italic=False):
+    box = sl.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
+    tf = box.text_frame; tf.word_wrap = True
+    p = tf.paragraphs[0]; p.alignment = align
+    r = p.add_run(); r.text = text
+    r.font.size = Pt(sz); r.font.bold = bold
+    r.font.italic = italic; r.font.color.rgb = color
+    return box
 
-
-def multiline_txt(slide, lines, x, y, w, h,
-                  size=11, color=DARK, bold_first=False, spacing=1.15,
-                  align=PP_ALIGN.LEFT):
-    """Add a text box with multiple paragraphs."""
-    from pptx.util import Pt as PT
-    from pptx.oxml.ns import qn
-    import lxml.etree as etree
-
-    txBox = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
-    tf = txBox.text_frame
-    tf.word_wrap = True
-
+def multiline(sl, lines, x, y, w, h, sz=10, color=DARK, spacing_inches=0.26):
     for i, line in enumerate(lines):
-        if i == 0:
-            p = tf.paragraphs[0]
-        else:
-            p = tf.add_paragraph()
-        p.alignment = align
-        run = p.add_run()
-        run.text = line
-        run.font.size = PT(size)
-        run.font.color.rgb = color
-        run.font.bold = (bold_first and i == 0)
-    return txBox
+        tb(sl, line, x, y + i * spacing_inches, w, spacing_inches + 0.05,
+           sz=sz, color=color)
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Slide furniture
+# ══════════════════════════════════════════════════════════════════════════════
 
-def header_bar(slide, title, subtitle=None, accent=INDIGO):
-    """Top accent bar + title."""
-    # Thin colour bar at top
-    bar = box(slide, 0, 0, 13.33, 0.07, fill_color=accent)
-    # Title
-    txt(slide, title, 0.5, 0.18, 9.5, 0.55,
-        size=24, bold=True, color=DARK, align=PP_ALIGN.LEFT)
-    if subtitle:
-        txt(slide, subtitle, 0.5, 0.72, 9.5, 0.35,
-            size=12, color=MID_GRAY, align=PP_ALIGN.LEFT)
+def header(sl, title, sub=None, accent=INDIGO):
+    rect(sl, 0, 0, 13.33, 0.08, fill=accent)
+    tb(sl, title, 0.4, 0.15, 10, 0.58, sz=22, bold=True, color=DARK)
+    if sub:
+        tb(sl, sub, 0.4, 0.73, 12.5, 0.32, sz=10, color=MID, italic=True)
 
+def footer(sl):
+    rect(sl, 0, FOOTER_TOP, 13.33, 0.28, fill=LGRAY)
+    tb(sl, "TransformHub  ·  Senior Leadership Demo  ·  March 2026  ·  http://localhost:3000",
+       0.3, FOOTER_TOP + 0.04, 12.7, 0.2, sz=7.5, color=MID)
 
-def section_label(slide, text, x, y, color=INDIGO):
-    """Small ALL-CAPS section eyebrow."""
-    txt(slide, text.upper(), x, y, 6, 0.28,
-        size=9, bold=True, color=color, align=PP_ALIGN.LEFT)
-
-
-def card(slide, x, y, w, h, bg=ACCENT_BG, border=INDIGO):
-    return box(slide, x, y, w, h,
-               fill_color=bg, line_color=border, line_width=Pt(0.5))
-
-
-def bullet_block(slide, items, x, y, w, h,
-                 title=None, title_color=INDIGO,
-                 bullet="→", size=10, color=DARK,
-                 bg=ACCENT_BG, border=INDIGO, line_gap=0.28):
-    """Render a bullet list inside a card."""
-    card(slide, x, y, w, h, bg=bg, border=border)
-    cy = y + 0.15
-    if title:
-        txt(slide, title, x + 0.15, cy, w - 0.3, 0.28,
-            size=10, bold=True, color=title_color)
-        cy += 0.30
-    for item in items:
-        txt(slide, f"{bullet}  {item}", x + 0.15, cy, w - 0.3, line_gap + 0.02,
-            size=size, color=color)
-        cy += line_gap
-    return cy
-
-
-def metric_box(slide, value, label, x, y, w=1.4, h=0.85,
-               val_color=INDIGO, bg=ACCENT_BG, border=INDIGO):
-    card(slide, x, y, w, h, bg=bg, border=border)
-    txt(slide, str(value), x + 0.1, y + 0.06, w - 0.2, 0.44,
-        size=26, bold=True, color=val_color, align=PP_ALIGN.CENTER)
-    txt(slide, label, x + 0.05, y + 0.50, w - 0.1, 0.28,
-        size=9, color=MID_GRAY, align=PP_ALIGN.CENTER)
-
-
-def talking_points_panel(slide, points, x=8.85, y=1.15, w=4.2, h=5.8):
-    """Right-hand 'Talking Points' panel."""
-    # Panel background
-    box(slide, x, y, w, h, fill_color=RGBColor(0xF9, 0xFA, 0xFF),
-        line_color=INDIGO, line_width=Pt(0.75))
-    # Header strip
-    box(slide, x, y, w, 0.38, fill_color=INDIGO)
-    txt(slide, "💬  TALKING POINTS", x + 0.15, y + 0.05, w - 0.3, 0.28,
-        size=10, bold=True, color=WHITE)
-    cy = y + 0.50
+def add_notes(sl, points):
+    """Write talking points to the PPT notes pane."""
+    notes_tf = sl.notes_slide.notes_text_frame
+    notes_tf.clear()
+    p = notes_tf.paragraphs[0]
+    r = p.add_run()
+    r.text = "TALKING POINTS"
+    r.font.bold = True; r.font.size = Pt(12)
     for pt in points:
-        # bullet dot
-        dot = slide.shapes.add_shape(
-            9,  # OVAL
-            Inches(x + 0.18), Inches(cy + 0.07),
-            Inches(0.09), Inches(0.09)
-        )
-        dot.fill.solid(); dot.fill.fore_color.rgb = INDIGO
-        dot.line.fill.background()
-        txt(slide, pt, x + 0.35, cy, w - 0.5, 0.55,
-            size=9.5, color=DARK, wrap=True)
-        cy += 0.60
-        if cy > y + h - 0.15:
-            break
+        para = notes_tf.add_paragraph()
+        run = para.add_run()
+        run.text = f"•  {pt}"
+        run.font.size = Pt(11)
 
+def talking_points(sl, points, accent=AMBER):
+    """
+    Amber strip at bottom of every slide showing talking points.
+    Clearly labelled, never overlaps content.
+    """
+    # Background strip
+    rect(sl, 0, TP_TOP, 13.33, TP_H, fill=TP_BG, line=TP_BORD, lw=Pt(0))
+    # Left colour tab
+    rect(sl, 0, TP_TOP, 0.22, TP_H, fill=TP_BORD)
+    # Label
+    tb(sl, "💬  TALKING POINTS", 0.3, TP_TOP + 0.08, 2.5, 0.3,
+       sz=9, bold=True, color=TP_BORD)
+    # Points in two columns
+    mid = len(points) // 2 + len(points) % 2
+    col1 = points[:mid]
+    col2 = points[mid:]
+    xs = [0.3, 6.75]
+    for ci, col in enumerate([col1, col2]):
+        x = xs[ci]
+        for ri, pt in enumerate(col):
+            y = TP_TOP + 0.42 + ri * 0.46
+            oval(sl, x + 0.02, y + 0.08, 0.10, 0.10, fill=TP_BORD)
+            tb(sl, pt, x + 0.20, y, 6.2, 0.44, sz=9, color=DARK)
+    # Notes pane also
+    add_notes(sl, points)
 
-def add_accuracy_bar(slide, label, pct, x, y, w=3.6, h=0.44,
-                     bar_color=GREEN):
-    """Horizontal accuracy bar."""
-    txt(slide, label, x, y, 2.2, 0.25, size=9.5, color=DARK)
-    pct_label = f"{pct}%"
-    txt(slide, pct_label, x + 2.25, y, 0.6, 0.25,
-        size=9.5, bold=True, color=bar_color, align=PP_ALIGN.RIGHT)
-    # track
-    box(slide, x, y + 0.28, w, 0.13, fill_color=LIGHT_GRAY)
-    # fill
-    fill_w = w * (pct / 100)
-    box(slide, x, y + 0.28, fill_w, 0.13, fill_color=bar_color)
+def metric(sl, val, label, x, y, w=1.7, h=0.9,
+           vcol=INDIGO, bg=INDBG, border=INDIGO):
+    rect(sl, x, y, w, h, fill=bg, line=border, lw=Pt(0.6))
+    tb(sl, str(val), x, y + 0.07, w, 0.46, sz=26, bold=True,
+       color=vcol, align=PP_ALIGN.CENTER)
+    tb(sl, label, x, y + 0.54, w, 0.3, sz=8.5, color=MID,
+       align=PP_ALIGN.CENTER)
 
+def card(sl, x, y, w, h, bg=LGRAY, border=INDIGO, lw=Pt(0.6)):
+    return rect(sl, x, y, w, h, fill=bg, line=border, lw=lw)
 
-def step_badge(slide, num, x, y, color=INDIGO):
-    c = slide.shapes.add_shape(9, Inches(x), Inches(y),
-                                Inches(0.35), Inches(0.35))
-    c.fill.solid(); c.fill.fore_color.rgb = color
-    c.line.fill.background()
-    tf = c.text_frame
-    tf.paragraphs[0].alignment = PP_ALIGN.CENTER
+def step_badge(sl, num, x, y, color=INDIGO, sz=0.34):
+    c = sl.shapes.add_shape(9, Inches(x), Inches(y), Inches(sz), Inches(sz))
+    c.fill.solid(); c.fill.fore_color.rgb = color; c.line.fill.background()
+    tf = c.text_frame; tf.paragraphs[0].alignment = PP_ALIGN.CENTER
     r = tf.paragraphs[0].add_run()
-    r.text = str(num); r.font.size = Pt(13); r.font.bold = True
+    r.text = str(num); r.font.size = Pt(12); r.font.bold = True
     r.font.color.rgb = WHITE
 
-
-def footer(slide, text="TransformHub  ·  Enterprise Digital Transformation Platform  ·  2026"):
-    box(slide, 0, 7.25, 13.33, 0.25, fill_color=LIGHT_GRAY)
-    txt(slide, text, 0.3, 7.27, 12.7, 0.2,
-        size=8, color=MID_GRAY, align=PP_ALIGN.LEFT)
-
+def acc_bar(sl, label, pct, x, y, w=4.8, bar_col=GREEN):
+    tb(sl, label, x, y, 3.2, 0.22, sz=9.5, color=DARK)
+    tb(sl, f"{pct}%", x + 3.3, y, 0.7, 0.22, sz=9.5, bold=True,
+       color=bar_col, align=PP_ALIGN.RIGHT)
+    rect(sl, x, y + 0.25, w, 0.14, fill=LGRAY)
+    fw = max(0.05, w * pct / 100)
+    rect(sl, x, y + 0.25, fw, 0.14, fill=bar_col)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SLIDE 1 — Title
+# SLIDE 1  Title
 # ══════════════════════════════════════════════════════════════════════════════
-sl = add_slide()
+sl = new_slide()
+rect(sl, 0, 0, 0.22, 7.5, fill=INDIGO)   # left accent band
 
-# Left colour band
-box(sl, 0, 0, 0.18, 7.5, fill_color=INDIGO)
+tb(sl, "TransformHub", 0.5, 0.6, 9.5, 1.0,
+   sz=48, bold=True, color=INDIGO)
+tb(sl, "Enterprise Digital Transformation Platform  ·  Senior Leadership Demo  ·  March 2026",
+   0.5, 1.62, 11.0, 0.38, sz=12, color=MID)
+tb(sl, "Powered by 18 AI Agents  ·  Next.js 15 + FastAPI + LangGraph  ·  PostgreSQL 18 + pgvector",
+   0.5, 2.05, 11.0, 0.32, sz=10.5, color=MID, italic=True)
 
-# Big title
-txt(sl, "TransformHub", 0.55, 1.0, 8.5, 1.1,
-    size=52, bold=True, color=INDIGO, align=PP_ALIGN.LEFT)
-txt(sl, "Senior Leadership Demo  ·  March 2026", 0.55, 2.05, 8.5, 0.4,
-    size=14, color=MID_GRAY)
-txt(sl, "Enterprise Digital Transformation Platform", 0.55, 2.55, 8.5, 0.5,
-    size=18, bold=True, color=DARK)
-txt(sl, "Powered by 18 AI Agents  ·  Next.js 15 + FastAPI + LangGraph  ·  PostgreSQL + pgvector",
-    0.55, 3.05, 8.5, 0.35, size=11, color=MID_GRAY)
+stats = [("3","Enterprise\nDemo Orgs"), ("8","Core\nModules"),
+         ("18","AI\nAgents"), ("78","Capabilities\nMapped"), ("245+","Functionalities\nDiscovered")]
+for i,(v,l) in enumerate(stats):
+    metric(sl, v, l, 0.5 + i*2.0, 2.6, 1.7, 1.05)
+
+rect(sl, 0.5, 3.85, 8.2, 0.9, fill=INDBG, line=INDIGO, lw=Pt(0.6))
+tb(sl, "AI-powered transformation — from discovery to delivery — fully auditable, benchmark-grounded and transparent.",
+   0.7, 3.93, 7.9, 0.7, sz=11, italic=True, color=INDIGO)
+
+# Credentials block
+rect(sl, 9.3, 0.55, 3.8, 4.5, fill=INDBG, line=INDIGO, lw=Pt(0.75))
+rect(sl, 9.3, 0.55, 3.8, 0.42, fill=INDIGO)
+tb(sl, "DEMO ACCESS", 9.5, 0.62, 3.4, 0.28, sz=11, bold=True, color=WHITE)
+creds = [
+    ("Pre-Filled Demo","demo@transformhub.ai","demo1234",INDBG),
+    ("Live Entry Demo","live@transformhub.ai","live1234",CYANBG),
+    ("Admin","admin@transformhub.ai","demo1234",LGRAY),
+]
+cy=1.08
+for label,email,pwd,bg in creds:
+    rect(sl,9.45,cy,3.5,0.92,fill=bg,line=INDIGO,lw=Pt(0.4))
+    tb(sl,label,9.6,cy+0.05,3.2,0.26,sz=9,bold=True,color=INDIGO)
+    tb(sl,f"✉  {email}",9.6,cy+0.30,3.2,0.24,sz=9,color=DARK)
+    tb(sl,f"🔑  {pwd}",9.6,cy+0.54,3.2,0.24,sz=9,color=MID)
+    cy+=1.02
+tb(sl,"🌐  http://localhost:3000",9.5,cy+0.08,3.4,0.3,sz=10,bold=True,color=CYAN)
+
+footer(sl)
+talking_points(sl,[
+    "TransformHub consolidates 6+ separate enterprise tools into one AI-native platform",
+    "18 LangGraph agents cover the full transformation lifecycle — discovery through delivery",
+    "Multi-tenant: US Bank, Telstra Health and ING Bank are all isolated and independently seeded",
+    "78 capabilities mapped with 85% average confidence — evidence-based, not AI guesswork",
+    "245 functionalities with full source triangulation (3–5 evidence sources each)",
+    "Accuracy dashboard shows live composite score (~68%) — this rises as more agents are run",
+])
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SLIDE 2  Agenda
+# ══════════════════════════════════════════════════════════════════════════════
+sl = new_slide()
+header(sl,"Today's Agenda","25-minute structured walkthrough across all platform modules")
+
+agenda=[
+    (INDIGO,"1","Platform Overview","3 min","Architecture, 8 modules, 18 AI agents pipeline"),
+    (CYAN,  "2","Discovery Module","4 min","Multi-pass AI · confidence scoring · source triangulation"),
+    (GREEN, "3","Value Stream Mapping","4 min","L1/L2/L3 hierarchy · flow efficiency · Mermaid diagrams"),
+    (PURPLE,"4","Future State Vision","4 min","Benchmark-grounded projections · automation mix"),
+    (RED,   "5","Risk & Compliance","3 min","Risk gates · SHA-256 audit trail · regulatory frameworks"),
+    (AMBER, "6","Accuracy Dashboard","3 min","Per-module scores · composite · live action plan"),
+    (CYAN,  "7","Live Entry Demo","4 min","Create org · run agents · watch data populate live"),
+    (GREEN, "8","Q & A","5 min","Open questions · next steps · roadmap"),
+]
+for i,(col,num,title,dur,desc) in enumerate(agenda):
+    c=i%2; r=i//2
+    xb=0.35+c*6.55; yb=CONTENT_TOP+r*0.93
+    card(sl,xb,yb,6.3,0.83,bg=LGRAY,border=col,lw=Pt(0.7))
+    step_badge(sl,num,xb+0.1,yb+0.22,color=col,sz=0.36)
+    tb(sl,title,xb+0.60,yb+0.06,3.5,0.36,sz=12,bold=True,color=DARK)
+    tb(sl,f"⏱ {dur}",xb+4.2,yb+0.06,1.8,0.3,sz=9,bold=True,color=col,align=PP_ALIGN.RIGHT)
+    tb(sl,desc,xb+0.60,yb+0.44,5.5,0.3,sz=9.5,color=MID)
+
+footer(sl)
+talking_points(sl,[
+    "Keep each section tight to the time allocation — the 25-min format is designed for exec attention spans",
+    "Start with pre-filled demo (Steps 1–6) to show polish — add live entry at the end if time allows",
+    "Steps 2–6 each have accuracy badges on the page header — point to them as you navigate",
+    "Q&A (Step 8) is where you ask: 'Which of your products would you like us to map first?'",
+    "If they're engaged, offer to run the Discovery agent live against their actual repo during Q&A",
+])
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SLIDE 3  Demo Mode Selection
+# ══════════════════════════════════════════════════════════════════════════════
+sl = new_slide()
+header(sl,"Choose Your Demo Path","Select based on audience type and time available")
+
+for ci,(col,bg,icon,mode,tag,items) in enumerate([
+    (INDIGO,INDBG,"🎯","Pre-Filled Demo","Recommended for Leadership",[
+        "Login: demo@transformhub.ai  /  demo1234",
+        "3 enterprise orgs: US Bank · Telstra Health · ING Bank",
+        "78 capabilities, 245 functionalities, full VSM seeded",
+        "Accuracy scores visible immediately (~65–72% composite)",
+        "21 context docs across all 5 RAG categories — all INDEXED",
+        "234 roadmap items with RICE scores and approval status",
+        "Estimated duration: 15–20 minutes",
+    ]),
+    (CYAN,CYANBG,"⚡","Live Entry Demo","Best for Technical Audiences",[
+        "Login: live@transformhub.ai  /  live1234",
+        "Create a new org — blank slate, no pre-seeded data",
+        "Paste any GitHub repo URL or public website URL",
+        "Run Discovery → review → run VSM → check Accuracy",
+        "Watch accuracy scores rise from 0% to live values in real-time",
+        "Requires OPENAI_API_KEY in agent-service/.env",
+        "Estimated duration: 20–30 minutes",
+    ]),
+]):
+    xb=0.35+ci*6.55
+    card(sl,xb,CONTENT_TOP,6.3,3.8,bg=bg,border=col)
+    rect(sl,xb,CONTENT_TOP,6.3,0.44,fill=col)
+    tb(sl,f"{icon}  {mode}",xb+0.18,CONTENT_TOP+0.08,5.9,0.3,sz=13,bold=True,color=WHITE)
+    tb(sl,tag,xb+0.18,CONTENT_TOP+0.56,5.9,0.28,sz=10,bold=True,color=col)
+    for ri,item in enumerate(items):
+        tb(sl,f"✓  {item}",xb+0.18,CONTENT_TOP+0.9+ri*0.42,5.9,0.38,sz=10,color=DARK)
+
+footer(sl)
+talking_points(sl,[
+    "For Board / C-suite: always use Pre-Filled — the visual richness of 78 capabilities + 234 roadmap items is the story",
+    "For IT / Architecture teams: Live Entry is more impressive — they understand what real-time agent execution means",
+    "Pre-Filled shows 3 different industry verticals (Banking, Healthcare, Payments) — switch orgs to show multi-tenancy",
+    "Live Entry works best with a public GitHub repo — stripe/stripe-node is ideal (clear API structure, well-tested)",
+    "Both modes use the same agent pipeline — the difference is only whether data is pre-seeded or generated live",
+])
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SLIDE 4  Platform Architecture
+# ══════════════════════════════════════════════════════════════════════════════
+sl = new_slide()
+header(sl,"Platform Architecture","Full-stack enterprise AI platform — three tiers, production-grade")
+
+layers=[
+    (INDIGO,"⚛  Frontend  :3000","Next.js 15 App Router  ·  TypeScript  ·  Tailwind v4  ·  Dark glassmorphism UI  ·  Real-time streaming output"),
+    (CYAN,  "🐍  Agent Service  :8000","FastAPI  ·  LangGraph  ·  Python 3.13  ·  18 AI Agents  ·  BM25 + pgvector RAG  ·  Agent memory + feedback loops"),
+    (GREEN, "🗄  Data Layer  :5432","PostgreSQL 18  ·  pgvector extension  ·  Prisma ORM  ·  SHA-256 chained audit trail  ·  Multi-tenant row isolation"),
+]
+for i,(col,title,desc) in enumerate(layers):
+    yb=CONTENT_TOP+i*1.22
+    card(sl,0.35,yb,12.6,1.08,bg=LGRAY,border=col)
+    rect(sl,0.35,yb,0.22,1.08,fill=col)
+    tb(sl,title,0.7,yb+0.12,5.5,0.38,sz=13,bold=True,color=col)
+    tb(sl,desc,0.7,yb+0.58,11.8,0.38,sz=10,color=DARK)
+    if i<2:
+        tb(sl,"▼",6.4,yb+1.1,0.6,0.25,sz=12,color=col,align=PP_ALIGN.CENTER)
 
 # Stats row
-stats = [("3", "Enterprise Orgs"), ("8", "Core Modules"),
-         ("18", "AI Agents"), ("78", "Capabilities"), ("245+", "Functionalities")]
-for i, (val, lbl) in enumerate(stats):
-    metric_box(sl, val, lbl, 0.55 + i * 1.65, 4.0, 1.4, 0.9)
-
-# Tagline
-box(sl, 0.55, 5.2, 7.8, 0.8, fill_color=ACCENT_BG, line_color=INDIGO, line_width=Pt(0.5))
-txt(sl, "AI-powered transformation from discovery to delivery — auditable, benchmark-grounded, transparent.",
-    0.75, 5.32, 7.4, 0.55, size=11, italic=True, color=INDIGO)
-
-# Right panel — credentials
-card(sl, 9.2, 1.0, 3.7, 5.5, bg=RGBColor(0xF9,0xFA,0xFF), border=INDIGO)
-box(sl, 9.2, 1.0, 3.7, 0.4, fill_color=INDIGO)
-txt(sl, "DEMO ACCESS", 9.4, 1.07, 3.3, 0.28,
-    size=11, bold=True, color=WHITE)
-rows = [
-    ("Pre-Filled Demo", "demo@transformhub.ai", "demo1234"),
-    ("Live Entry Demo", "live@transformhub.ai", "live1234"),
-    ("Admin", "admin@transformhub.ai", "demo1234"),
-]
-cy = 1.55
-for label, email, pwd in rows:
-    txt(sl, label, 9.4, cy, 3.3, 0.22, size=9, bold=True, color=INDIGO)
-    txt(sl, f"✉  {email}", 9.4, cy + 0.22, 3.3, 0.22, size=9, color=DARK)
-    txt(sl, f"🔑  {pwd}", 9.4, cy + 0.44, 3.3, 0.22, size=9, color=MID_GRAY)
-    cy += 0.9
-txt(sl, "🌐  http://localhost:3000", 9.4, cy + 0.1, 3.3, 0.28,
-    size=9.5, bold=True, color=CYAN)
+stats=[("18","LangGraph Agents",INDIGO),("50+","API Routes",CYAN),
+       ("8","Core Modules",GREEN),("5","RAG Categories",AMBER),("3","Tenants",PURPLE)]
+for i,(v,l,c) in enumerate(stats):
+    metric(sl,v,l,0.35+i*2.55,CONTENT_TOP+3.75,2.3,0.9,vcol=c,bg=LGRAY,border=c)
 
 footer(sl)
-
+talking_points(sl,[
+    "Three-tier architecture means each layer can be scaled independently — agent service scales horizontally for heavy workloads",
+    "LangGraph checkpointing means if an agent fails mid-run, it resumes from the last checkpoint — no lost work",
+    "Redis is optional — the platform runs fully on in-memory fallback, which is what you see in the demo",
+    "pgvector enables the hybrid RAG: BM25 for keyword recall + cosine similarity for semantic recall — best of both",
+    "50+ API routes cover the full CRUD surface for all 8 modules plus agent execution, accuracy, and context management",
+    "Prisma ORM gives type-safe DB access — no raw SQL, no injection risk, strong migration tooling",
+])
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SLIDE 2 — Agenda
+# SLIDE 5  8 Core Modules
 # ══════════════════════════════════════════════════════════════════════════════
-sl = add_slide()
-header_bar(sl, "Today's Agenda", "25-minute walkthrough across all platform modules")
+sl = new_slide()
+header(sl,"8 Core Modules","End-to-end transformation lifecycle — Discovery through Delivery")
 
-agenda = [
-    (INDIGO,  "1", "Platform Overview",         "3 min",  "Architecture, 8 modules, 18 AI agents pipeline"),
-    (CYAN,    "2", "Discovery Module",           "4 min",  "Multi-pass AI discovery · confidence scoring · source triangulation"),
-    (GREEN,   "3", "Value Stream Mapping",       "4 min",  "L1/L2/L3 hierarchy · flow efficiency · Mermaid diagrams"),
-    (RGBColor(0xA8,0x55,0xF7), "4", "Future State Vision", "4 min", "Benchmark-grounded projections · automation mix breakdown"),
-    (RED,     "5", "Risk & Compliance",          "3 min",  "Risk gates · SHA-256 audit trail · regulatory frameworks"),
-    (AMBER,   "6", "Accuracy Dashboard",         "3 min",  "Per-module scores · composite · live action plan"),
-    (CYAN,    "7", "Live Entry Demo",             "4 min",  "Create org · run agents · watch data populate in real-time"),
-    (GREEN,   "8", "Q&A",                        "5 min",  "Open questions · next steps · roadmap"),
+modules=[
+    (INDIGO,"🔍","Discovery","Multi-pass AI analysis\n3 human review gates\nConfidence + source triangulation\n~85% accuracy score"),
+    (GREEN, "🗺","Value Stream\nMapping","L1 / L2 / L3 hierarchy\nMermaid diagrams auto-generated\n100% VSM coverage\n~72% accuracy score"),
+    (PURPLE,"🚀","Future State\nVision","Benchmark-grounded projections\n3-band metrics: cons/exp/opt\nAutomation mix breakdown\n~70% accuracy score"),
+    (RED,   "🛡","Risk &\nCompliance","Risk gate: score ≥8.0 blocks\nSHA-256 chained audit trail\nSOX · FDIC · HIPAA · Basel III"),
+    (AMBER, "🗓","Product\nRoadmap","RICE scoring algorithm\nApproval workflow (PENDING→APPROVED)\n234 items, Q1–Q4 2026"),
+    (CYAN,  "🔧","Product\nWorkbench","Readiness scoring 0–10\nArchitecture views (functional/tech)\nInline editing of all entities"),
+    (GREEN, "📚","Context\nHub","5 RAG doc categories\nBM25 + vector hybrid search\nURL fetch + file upload"),
+    (AMBER, "📊","Accuracy\nDashboard","Per-module composite score\nLive action plan (4–8 steps)\nBadges on every page header"),
 ]
-
-cols = [(0.4, 6.0), (6.7, 6.0)]
-for i, (color, num, title, dur, desc) in enumerate(agenda):
-    col = i % 2
-    row = i // 2
-    xb = cols[col][0]
-    yb = 1.3 + row * 1.35
-    w  = 5.9
-    card(sl, xb, yb, w, 1.1, bg=LIGHT_GRAY,
-         border=color)
-    step_badge(sl, num, xb + 0.12, yb + 0.35, color=color)
-    txt(sl, title, xb + 0.6, yb + 0.1, w - 0.75, 0.35,
-        size=12, bold=True, color=DARK)
-    txt(sl, f"⏱  {dur}", xb + 0.6, yb + 0.42, 1.2, 0.25,
-        size=9, color=color, bold=True)
-    txt(sl, desc, xb + 0.6, yb + 0.65, w - 0.75, 0.38,
-        size=9.5, color=MID_GRAY)
+for i,(col,icon,title,desc) in enumerate(modules):
+    c=i%4; r=i//4
+    xb=0.35+c*3.24; yb=CONTENT_TOP+r*1.95
+    card(sl,xb,yb,3.08,1.78,bg=LGRAY,border=col)
+    rect(sl,xb,yb,3.08,0.1,fill=col)
+    tb(sl,icon,xb+0.12,yb+0.18,0.5,0.44,sz=18)
+    tb(sl,title,xb+0.65,yb+0.22,2.3,0.44,sz=11,bold=True,color=col)
+    tb(sl,desc,xb+0.12,yb+0.7,2.85,0.98,sz=8.5,color=MID)
 
 footer(sl)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SLIDE 3 — Demo Mode Selection
-# ══════════════════════════════════════════════════════════════════════════════
-sl = add_slide()
-header_bar(sl, "Choose Your Demo Path",
-           "Two options depending on audience and time available")
-
-# Pre-Filled card
-card(sl, 0.4, 1.25, 5.9, 5.5, bg=ACCENT_BG, border=INDIGO)
-box(sl, 0.4, 1.25, 5.9, 0.45, fill_color=INDIGO)
-txt(sl, "🎯  PRE-FILLED DEMO", 0.6, 1.32, 5.5, 0.32,
-    size=12, bold=True, color=WHITE)
-txt(sl, "Recommended for Senior Leadership", 0.6, 1.75, 5.5, 0.28,
-    size=10, bold=True, color=INDIGO)
-pf_items = [
-    "Login: demo@transformhub.ai  /  demo1234",
-    "3 enterprise orgs pre-loaded — US Bank, Telstra Health, ING Bank",
-    "78 AI-mapped capabilities, 245 functionalities, full VSM",
-    "Accuracy scores immediately visible (~65–72% composite)",
-    "21 context documents across all 5 RAG categories indexed",
-    "Rich roadmap: 234 items with RICE scores + approval status",
-    "Estimated duration: 15–20 minutes",
-]
-cy = 2.12
-for item in pf_items:
-    txt(sl, f"✓  {item}", 0.6, cy, 5.5, 0.38, size=10, color=DARK)
-    cy += 0.42
-txt(sl, "START →  http://localhost:3000/login", 0.6, 6.3, 5.5, 0.3,
-    size=10, bold=True, color=INDIGO)
-
-# Live Entry card
-card(sl, 7.0, 1.25, 5.9, 5.5, bg=CYAN_BG, border=CYAN)
-box(sl, 7.0, 1.25, 5.9, 0.45, fill_color=CYAN)
-txt(sl, "⚡  LIVE ENTRY DEMO", 7.2, 1.32, 5.5, 0.32,
-    size=12, bold=True, color=WHITE)
-txt(sl, "Best for Technical Audiences", 7.2, 1.75, 5.5, 0.28,
-    size=10, bold=True, color=CYAN)
-le_items = [
-    "Login: live@transformhub.ai  /  live1234",
-    "Create new org — enter real company details",
-    "Paste a GitHub repo URL or website URL",
-    "Run Discovery agent — watch data stream in real-time",
-    "Run VSM, Risk, Future State agents sequentially",
-    "Watch accuracy scores rise from 0% to live values",
-    "Requires OPENAI_API_KEY in .env  ·  20–30 minutes",
-]
-cy = 2.12
-for item in le_items:
-    txt(sl, f"✓  {item}", 7.2, cy, 5.5, 0.38, size=10, color=DARK)
-    cy += 0.42
-txt(sl, "START →  Organizations → + New Organization", 7.2, 6.3, 5.5, 0.3,
-    size=10, bold=True, color=CYAN)
-
-footer(sl)
-
+talking_points(sl,[
+    "Each module feeds the next: Discovery → VSM → Future State → Risk → Roadmap is a complete AI-driven workflow",
+    "Accuracy badges appear on EVERY module page header — click any badge to jump to the Accuracy Dashboard",
+    "Context Hub is the brain behind all agents — docs uploaded there are injected into every agent's RAG context",
+    "Discovery is the entry point — without running Discovery first, other agents have limited data to work with",
+    "Product Workbench and Roadmap are the output modules — this is where leadership makes go/no-go decisions",
+    "Risk & Compliance has a hard gate at score ≥8.0 — no transformation proceeds until risk is mitigated",
+])
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SLIDE 4 — Platform Architecture
+# SLIDE 6  Discovery
 # ══════════════════════════════════════════════════════════════════════════════
-sl = add_slide()
-header_bar(sl, "Platform Architecture",
-           "Full-stack enterprise-grade AI transformation platform")
+sl = new_slide()
+header(sl,"Step 1  ·  Discovery Module","Multi-pass AI analysis with human review gates — ~85% accuracy",accent=INDIGO)
 
-tps = [
-    "Next.js 15 App Router with TypeScript provides a type-safe, SSR-ready frontend — no runtime surprises in demos",
-    "FastAPI + LangGraph gives each of the 18 agents a dedicated execution graph with checkpointing — agents can be resumed on failure",
-    "pgvector enables hybrid RAG: BM25 keyword ranking + semantic vector search combined for best retrieval accuracy",
-    "Redis (in-memory fallback) handles agent state caching — demo works without Redis running",
-    "Multi-tenant from day one: every org is fully isolated at the database row level",
-    "SHA-256 chained audit trail means every agent action is tamper-proof and traceable",
+passes=[
+    (INDIGO,"Pass 1","Digital Products identified","Human reviews product list → Edit / Delete inline → Approve to continue"),
+    (CYAN,  "Pass 2","Capabilities mapped","Constrained to approved products only → human reviews capability tree"),
+    (GREEN, "Pass 3","Functionalities extracted","Confidence score + evidence sources per item → human final approval"),
 ]
-talking_points_panel(sl, tps)
+for i,(col,pnum,title,desc) in enumerate(passes):
+    yb=CONTENT_TOP+i*1.18
+    card(sl,0.35,yb,8.0,1.0,bg=LGRAY,border=col)
+    rect(sl,0.35,yb,0.22,1.0,fill=col)
+    step_badge(sl,str(i+1),0.65,yb+0.31,color=col,sz=0.34)
+    tb(sl,pnum,1.12,yb+0.08,2.0,0.34,sz=11,bold=True,color=col)
+    tb(sl,title,1.12,yb+0.44,3.0,0.3,sz=11,color=DARK)
+    tb(sl,desc,4.3,yb+0.08,3.9,0.82,sz=9.5,color=MID,italic=True)
+    if i<2: tb(sl,"▼",4.1,yb+1.02,0.5,0.2,sz=11,color=col,align=PP_ALIGN.CENTER)
 
-layers = [
-    (INDIGO, "⚛  Frontend", ":3000", "Next.js 15 · TypeScript · Tailwind v4\nDark glassmorphism UI · Dark theme\nReal-time streaming output"),
-    (CYAN,   "🐍  Agent Service", ":8000", "FastAPI · LangGraph · Python 3.13\n18 AI Agents · BM25 + pgvector RAG\nAgent memory + feedback loops"),
-    (GREEN,  "🗄  Data Layer", ":5432", "PostgreSQL 18 + pgvector extension\nPrisma ORM · SHA-256 audit trail\nMulti-tenant org isolation"),
-]
-
-for i, (color, title, port, detail) in enumerate(layers):
-    yb = 1.3 + i * 1.72
-    card(sl, 0.4, yb, 7.85, 1.5, bg=LIGHT_GRAY, border=color)
-    box(sl, 0.4, yb, 0.18, 1.5, fill_color=color)
-    txt(sl, title, 0.72, yb + 0.12, 4.5, 0.4, size=14, bold=True, color=color)
-    txt(sl, port, 5.4, yb + 0.12, 1.5, 0.4, size=14, bold=True, color=color,
-        align=PP_ALIGN.RIGHT)
-    txt(sl, detail, 0.72, yb + 0.55, 7.3, 0.85, size=10, color=DARK)
-
-footer(sl)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SLIDE 5 — 8 Core Modules
-# ══════════════════════════════════════════════════════════════════════════════
-sl = add_slide()
-header_bar(sl, "8 Core Modules",
-           "End-to-end digital transformation lifecycle — discovery to delivery")
-
-tps = [
-    "Each module feeds data into the next — Discovery → VSM → Future State → Risk → Roadmap is a complete workflow",
-    "All 8 modules have agent execution tracking and per-module accuracy scores visible on every page header",
-    "Context Hub underpins every module: documents uploaded here are injected into every agent's RAG context",
-    "The Accuracy dashboard is the single source of truth for AI output quality — show this last to land the data story",
-    "Product Workbench shows readiness scores per product — drives the prioritisation discussion",
-]
-talking_points_panel(sl, tps)
-
-modules = [
-    (INDIGO, "🔍", "Discovery",          "Multi-pass AI · 3 review gates\nConfidence + source triangulation\n~85% accuracy"),
-    (GREEN,  "🗺", "Value Stream Map",   "L1 / L2 / L3 hierarchy\nMermaid diagrams auto-generated\n100% VSM coverage"),
-    (RGBColor(0xA8,0x55,0xF7), "🚀", "Future State", "Benchmark-grounded projections\n3-band metrics (cons/exp/opt)\nAutomation mix breakdown"),
-    (RED,    "🛡", "Risk & Compliance",  "Risk gates ≥ 8.0 blocks\nSHA-256 audit trail\nFramework mapping (SOX, PCI-DSS)"),
-    (AMBER,  "🗓", "Product Roadmap",    "RICE scoring\nApproval workflows\nQuarterly delivery tracks"),
-    (CYAN,   "🔧", "Product Workbench",  "Readiness scoring (0–10)\nArchitecture views\nInline editing"),
-    (GREEN,  "📚", "Context Hub",        "5 RAG doc categories\nBM25 + vector hybrid search\nURL + file upload"),
-    (AMBER,  "📊", "Accuracy Dashboard", "Per-module composite score\nLive action plan\nAgent memory quality"),
-]
-
-cols = 4
-for i, (color, icon, title, desc) in enumerate(modules):
-    col = i % cols
-    row = i // cols
-    xb = 0.4 + col * 2.08
-    yb = 1.3 + row * 2.6
-    card(sl, xb, yb, 1.95, 2.3, bg=LIGHT_GRAY, border=color)
-    box(sl, xb, yb, 1.95, 0.08, fill_color=color)
-    txt(sl, icon, xb + 0.12, yb + 0.18, 0.5, 0.45, size=20)
-    txt(sl, title, xb + 0.12, yb + 0.62, 1.72, 0.35,
-        size=11, bold=True, color=color)
-    txt(sl, desc, xb + 0.12, yb + 0.98, 1.72, 1.2,
-        size=9, color=MID_GRAY)
-
-footer(sl)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SLIDE 6 — Discovery Module (demo step 1)
-# ══════════════════════════════════════════════════════════════════════════════
-sl = add_slide()
-header_bar(sl, "Step 1  ·  Discovery Module",
-           "Multi-pass AI analysis with human review gates at each stage", accent=INDIGO)
-
-tps = [
-    "3-pass design ensures humans approve products before capabilities are mapped — prevents hallucination cascade",
-    "Confidence scores (78–97%) come from triangulating 8 evidence sources: GitHub structure, OpenAPI, DB schema, tests, docs, URL, integrations, Q&A",
-    "Source triangulation rate: 100% of seeded capabilities have 3+ sources — show the source distribution chart in the Discovery module",
-    "Inline edit/delete means the analyst team can correct AI output before it flows downstream",
-    "4 view modes: Products list, Drilldown tree, Hierarchy tree, Product Catalog — switch to Catalog for exec summary",
-    "US Bank: 3 products — LoanFlow Digital, PayStream Core, FraudGuard AI — each with 8–9 capabilities",
-]
-talking_points_panel(sl, tps)
-
-# Pass diagram
-passes = [
-    (INDIGO, "Pass 1", "Digital Products only", "Human review gate → Approve/Edit/Delete"),
-    (CYAN,   "Pass 2", "Capabilities mapped", "Constrained to approved products"),
-    (GREEN,  "Pass 3", "Functionalities extracted", "With confidence + source attribution"),
-]
-for i, (color, pnum, title, sub) in enumerate(passes):
-    yb = 1.35 + i * 1.6
-    card(sl, 0.4, yb, 7.85, 1.35, bg=LIGHT_GRAY, border=color)
-    step_badge(sl, str(i+1), 0.55, yb + 0.47, color=color)
-    txt(sl, pnum, 1.1, yb + 0.12, 2.0, 0.35, size=12, bold=True, color=color)
-    txt(sl, title, 1.1, yb + 0.48, 4.0, 0.38, size=11, color=DARK)
-    txt(sl, sub, 1.1, yb + 0.85, 6.5, 0.38, size=10, color=MID_GRAY, italic=True)
-    # arrow between passes
-    if i < 2:
-        txt(sl, "▼", 4.2, yb + 1.38, 0.5, 0.3, size=12, color=color,
-            align=PP_ALIGN.CENTER)
-
-# Stats row
-stats2 = [("9", "Products"), ("26", "Capabilities", GREEN), ("79", "Functionalities"),
-          ("85%", "Avg Confidence", GREEN), ("100%", "Triangulated", GREEN)]
-xst = 0.4
-for item in stats2:
-    val, lbl = item[0], item[1]
-    col = item[2] if len(item) > 2 else INDIGO
-    metric_box(sl, val, lbl, xst, 6.15, 1.45, 0.85, val_color=col)
-    xst += 1.55
-
-footer(sl)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SLIDE 7 — Value Stream Mapping
-# ══════════════════════════════════════════════════════════════════════════════
-sl = add_slide()
-header_bar(sl, "Step 2  ·  Value Stream Mapping",
-           "Three-level hierarchy from segment overview to functionality step timing", accent=GREEN)
-
-tps = [
-    "L1 (Segment) shows cross-product flow efficiency — use this for exec overview; 'Which products have the biggest waste?'",
-    "L2 (Capability) shows process time vs wait time — bottlenecks appear clearly; typical FE is 30–40% which means 60–70% is waste",
-    "L3 (Functionality) shows individual step timing — step classification panel labels each step as Value-Adding, Bottleneck, Waste, or Waiting",
-    "100% of 78 capabilities have VSM metrics — this is the key improvement from the seed rebuild",
-    "Mermaid diagrams auto-generated for every capability — visual for stakeholders who don't read tables",
-    "Capability Comparison Chart provides side-by-side flow efficiency bars across all products in a segment",
-]
-talking_points_panel(sl, tps)
-
-# Level cards
-levels = [
-    (GREEN, "L1", "Segment Level", "Cross-product flow overview\nBusiness segment selector\nComparative FE bar chart"),
-    (CYAN,  "L2", "Product Capabilities", "PT / WT / LT / FE per capability\nMermaid diagram auto-rendered\nBottleneck identification"),
-    (INDIGO,"L3", "Functionality Steps", "Step-by-step process timing\nClassification: VA / Bottleneck / Waste / Wait\nDrill from L2 with one click"),
-]
-for i, (color, lvl, title, desc) in enumerate(levels):
-    yb = 1.3 + i * 1.6
-    card(sl, 0.4, yb, 7.85, 1.38, bg=LIGHT_GRAY, border=color)
-    box(sl, 0.4, yb, 0.18, 1.38, fill_color=color)
-    txt(sl, lvl, 0.75, yb + 0.45, 0.6, 0.5, size=18, bold=True, color=color)
-    txt(sl, title, 1.5, yb + 0.1, 4.5, 0.4, size=13, bold=True, color=DARK)
-    txt(sl, desc, 1.5, yb + 0.55, 6.5, 0.75, size=10, color=MID_GRAY)
-    if i < 2:
-        txt(sl, "▼", 4.2, yb + 1.42, 0.5, 0.3, size=12, color=color,
-            align=PP_ALIGN.CENTER)
-
-# Metrics
-vsm_stats = [("78", "Capabilities with VSM"), ("100%", "Coverage"), ("78", "Mermaid Diagrams"), ("~35%", "Avg Flow Efficiency"), ("60%+", "Avg Waste Identified")]
-xst = 0.4
-for val, lbl in vsm_stats:
-    col = GREEN if "%" in val and val != "~35%" else INDIGO
-    metric_box(sl, val, lbl, xst, 6.15, 1.55, 0.85, val_color=col)
-    xst += 1.6
-
-footer(sl)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SLIDE 8 — Future State Vision
-# ══════════════════════════════════════════════════════════════════════════════
-sl = add_slide()
-header_bar(sl, "Step 3  ·  Future State Vision",
-           "Benchmark-grounded transformation projections with automation mix breakdown",
-           accent=RGBColor(0xA8,0x55,0xF7))
-
-tps = [
-    "The 'Benchmark-grounded' badge appears when VSM_BENCHMARKS or TRANSFORMATION_CASE_STUDIES documents are uploaded to Context Hub",
-    "Three-band projections (Conservative/Expected/Optimistic) are grounded in the uploaded benchmark documents — not arbitrary multipliers",
-    "Automation mix (RPA / AI-ML / Agent-Based / Conversational / Analytics) gives leadership a technology investment breakdown",
-    "RICE scoring on capability modernisation items enables prioritisation — teams can sort by highest expected ROI",
-    "Future State feeds directly into Product Roadmap — the agent auto-generates roadmap items from vision output",
-    "US Bank seeded future state: all 3 products have vision text + benchmark-grounded metrics pre-populated",
-]
-talking_points_panel(sl, tps)
-
-purple = RGBColor(0xA8,0x55,0xF7)
-purpleBG = RGBColor(0xF5,0xF3,0xFF)
-
-features = [
-    (purple, "Automation Mix Breakdown", "RPA · AI/ML · Agent-Based · Conversational · Analytics\nPer-product percentage breakdown with visual chart"),
-    (AMBER,  "Projected Metrics — 3 Bands", "Conservative / Expected / Optimistic projections\nGrounded in uploaded VSM benchmarks + case studies\n'Benchmark-grounded' badge indicates doc-based grounding"),
-    (CYAN,   "Capability Modernisation List", "RICE scoring (Reach × Impact × Confidence ÷ Effort)\nBusiness impact · Complexity · Recommended tech stack\nAuto-feeds into Product Roadmap agent"),
-]
-for i, (color, title, desc) in enumerate(features):
-    yb = 1.35 + i * 1.65
-    card(sl, 0.4, yb, 7.85, 1.42, bg=LIGHT_GRAY, border=color)
-    box(sl, 0.4, yb, 0.18, 1.42, fill_color=color)
-    txt(sl, title, 0.72, yb + 0.12, 6.5, 0.42, size=13, bold=True, color=color)
-    txt(sl, desc, 0.72, yb + 0.58, 6.5, 0.80, size=10, color=DARK)
-
-fs_stats = [("9", "Products with Vision"), ("3", "Metric Bands"), ("✓", "Benchmark Docs"), ("234", "Roadmap Items"), ("~70%", "FS Accuracy")]
-xst = 0.4
-for val, lbl in fs_stats:
-    col = purple if val not in ["234", "~70%"] else (GREEN if "%" in val else INDIGO)
-    metric_box(sl, val, lbl, xst, 6.15, 1.55, 0.85, val_color=col)
-    xst += 1.6
-
-footer(sl)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SLIDE 9 — Risk & Compliance
-# ══════════════════════════════════════════════════════════════════════════════
-sl = add_slide()
-header_bar(sl, "Step 4  ·  Risk & Compliance",
-           "Risk gates, regulatory compliance mapping, and SHA-256 tamper-proof audit trail",
-           accent=RED)
-
-tps = [
-    "Risk score ≥ 8.0 AUTOMATICALLY blocks product transformation — this is a hard gate, not advisory",
-    "SHA-256 chained audit trail: each entry references the previous hash — if any entry is altered, the whole chain breaks. Critical for SOX/FDIC/GDPR audits",
-    "US Bank frameworks: FINRA, SEC, SOX, FDIC, BSA/AML — all mapped to specific capabilities",
-    "Telstra Health frameworks: HL7 FHIR, HIPAA, GDPR — healthcare-specific compliance language",
-    "ING Bank frameworks: Basel III, MiFID II, SOLVENCY II — EU banking regulatory coverage",
-    "The Risk agent identifies compliance gaps and generates mitigation plans with evidence links",
-    "Run the Risk agent live — it takes ~60 seconds and populates the entire risk dashboard",
-]
-talking_points_panel(sl, tps)
-
-# Risk severity table
-sev_rows = [
-    (RED,    "CRITICAL  ≥ 8.0", "BLOCKS transformation. Mitigation must be completed and approved before any capability is moved to production"),
-    (AMBER,  "HIGH  6.0 – 7.9", "Transformation allowed with approved mitigation plan. Tracked in roadmap as mandatory pre-condition"),
-    (INDIGO, "MEDIUM  4.0 – 5.9", "Advisory. Mitigation recommended but does not block transformation gate"),
-    (GREEN,  "LOW  < 4.0",  "Informational only. Logged in audit trail. No action required before transformation"),
-]
-yb = 1.35
-for color, severity, action in sev_rows:
-    card(sl, 0.4, yb, 7.85, 1.1, bg=LIGHT_GRAY, border=color)
-    box(sl, 0.4, yb, 0.18, 1.1, fill_color=color)
-    txt(sl, severity, 0.72, yb + 0.12, 2.4, 0.38, size=12, bold=True, color=color)
-    txt(sl, action, 0.72, yb + 0.55, 6.5, 0.45, size=10, color=DARK)
-    yb += 1.22
+# Source types
+rect(sl,8.55,CONTENT_TOP,4.45,3.52,fill=INDBG,line=INDIGO,lw=Pt(0.6))
+rect(sl,8.55,CONTENT_TOP,4.45,0.36,fill=INDIGO)
+tb(sl,"EVIDENCE SOURCES",8.72,CONTENT_TOP+0.06,4.1,0.24,sz=9,bold=True,color=WHITE)
+sources=[("GitHub Structure","Code architecture + file tree"),
+         ("OpenAPI Spec","Endpoint + schema definitions"),
+         ("DB Schema","Table + relationship inference"),
+         ("GitHub Tests","Behaviour documentation in tests"),
+         ("URL Analysis","Public-facing product pages"),
+         ("Context Documents","Uploaded BRDs and process maps"),
+         ("Integration Data","Connected system metadata"),
+         ("Q&A / Questionnaire","Analyst-provided context"),]
+for ri,(src,desc) in enumerate(sources):
+    y=CONTENT_TOP+0.45+ri*0.37
+    oval(sl,8.7,y+0.1,0.1,0.1,fill=INDIGO)
+    tb(sl,src,8.88,y,2.0,0.26,sz=9,bold=True,color=DARK)
+    tb(sl,desc,10.95,y,1.9,0.26,sz=8.5,color=MID)
 
 # Stats
-r_stats = [("12", "Risk Assessments"), ("18", "Compliance Maps"), ("4", "Audit Entries/Org"), ("3", "Regulatory Frameworks"), ("SHA-256", "Audit Chain")]
-xst = 0.4
-for val, lbl in r_stats:
-    col = RED if lbl in ("Risk Assessments",) else (GREEN if lbl == "Audit Chain" else INDIGO)
-    metric_box(sl, val, lbl, xst, 6.15, 1.55, 0.85, val_color=col)
-    xst += 1.6
+stats=[("9","Products"),("26","Capabilities",GREEN),("79","Functionalities"),
+       ("85%","Avg Confidence",GREEN),("100%","Triangulated",GREEN)]
+xst=0.35
+for item in stats:
+    v,l=item[0],item[1]; c=item[2] if len(item)>2 else INDIGO
+    metric(sl,v,l,xst,CONTENT_TOP+3.6,1.58,0.85,vcol=c,bg=LGRAY,border=c)
+    xst+=1.65
 
 footer(sl)
-
+talking_points(sl,[
+    "CLICK: Discovery → switch to Drilldown view → click 'LoanFlow Digital' → show 9 capabilities expanding in the tree",
+    "Point to the confidence badge on 'AI Underwriting' capability — 87% confidence from 4 evidence sources (GitHub + OpenAPI + DB + docs)",
+    "CLICK: switch to Product Catalog view — this is the exec-friendly summary: 3 products, 26 capabilities, 79 functionalities at a glance",
+    "Inline editing: hover over any capability name → pencil icon appears → edit live → changes persist immediately",
+    "Multi-pass design prevents hallucination cascade — AI cannot invent capabilities for products that haven't been approved",
+    "Source triangulation: 100% of seeded capabilities have 3+ evidence sources — show the source distribution breakdown in Accuracy page",
+])
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SLIDE 10 — Product Roadmap
+# SLIDE 7  VSM
 # ══════════════════════════════════════════════════════════════════════════════
-sl = add_slide()
-header_bar(sl, "Step 5  ·  Product Roadmap",
-           "AI-generated RICE-scored roadmap with approval workflows and quarterly planning",
-           accent=AMBER)
+sl = new_slide()
+header(sl,"Step 2  ·  Value Stream Mapping","Three-level hierarchy — 100% capability coverage — Mermaid visualisation",accent=GREEN)
 
-tps = [
-    "RICE = Reach × Impact × Confidence ÷ Effort — the AI assigns each value automatically and explains the reasoning",
-    "Approval workflow: PENDING → APPROVED / REJECTED — leadership can approve or reject individual roadmap items with notes",
-    "234 roadmap items seeded across 3 orgs — mix of capability-level and functionality-level items",
-    "Items are product-centric: each roadmap item links to a specific product → capability → functionality",
-    "Quarters: Q1 2026 through Q4 2026 — items are spread across quarters and can be reordered",
-    "Filter by product, quarter, initiative, or approval status — useful for exec review of a specific product line",
-    "The roadmap agent is triggered from Future State — it reads the vision output and generates prioritised items automatically",
+levels=[
+    (GREEN, "L1","Segment Level","Cross-product flow efficiency view · Business segment selector · Comparative flow efficiency bars"),
+    (CYAN,  "L2","Product\nCapabilities","Process Time / Wait Time / Lead Time / Flow Efficiency per capability · Mermaid diagram rendered"),
+    (INDIGO,"L3","Functionality\nSteps","Step-by-step timing · Classification: Value-Adding / Bottleneck / Waste / Waiting · Drill from L2"),
 ]
-talking_points_panel(sl, tps)
+for i,(col,lvl,title,desc) in enumerate(levels):
+    yb=CONTENT_TOP+i*1.2
+    card(sl,0.35,yb,7.8,1.05,bg=LGRAY,border=col)
+    rect(sl,0.35,yb,0.22,1.05,fill=col)
+    tb(sl,lvl,0.65,yb+0.27,0.7,0.5,sz=18,bold=True,color=col,align=PP_ALIGN.CENTER)
+    tb(sl,title,1.5,yb+0.1,2.5,0.5,sz=13,bold=True,color=DARK)
+    tb(sl,desc,4.2,yb+0.1,3.8,0.82,sz=10,color=MID)
+    if i<2: tb(sl,"▼",4.0,yb+1.08,0.5,0.2,sz=11,color=col,align=PP_ALIGN.CENTER)
 
-# RICE explanation
-card(sl, 0.4, 1.3, 7.85, 1.35, bg=AMBER_BG, border=AMBER)
-txt(sl, "📐  RICE Scoring Formula", 0.6, 1.38, 5.0, 0.38,
-    size=13, bold=True, color=AMBER)
-txt(sl, "RICE Score  =  (Reach × Impact × Confidence)  ÷  Effort",
-    0.6, 1.78, 7.3, 0.38, size=12, bold=True, color=DARK, align=PP_ALIGN.CENTER)
-txt(sl, "Reach = users impacted/month   ·   Impact = 1–3x scale   ·   Confidence = 50–100%   ·   Effort = person-weeks",
-    0.6, 2.18, 7.3, 0.32, size=9.5, color=MID_GRAY, align=PP_ALIGN.CENTER)
-
-# Status breakdown
-statuses = [
-    (GREEN,  "APPROVED", "~40%", "Ready for sprint planning"),
-    (AMBER,  "PENDING",  "~45%", "Awaiting leadership sign-off"),
-    (RED,    "REJECTED", "~15%", "Needs further analysis before proceeding"),
+# Key metrics explanation
+rect(sl,8.45,CONTENT_TOP,4.55,3.52,fill=GREENBG,line=GREEN,lw=Pt(0.6))
+rect(sl,8.45,CONTENT_TOP,4.55,0.36,fill=GREEN)
+tb(sl,"KEY VSM METRICS",8.62,CONTENT_TOP+0.06,4.2,0.24,sz=9,bold=True,color=WHITE)
+vsm_defs=[
+    ("PT  Process Time","Time actively working on the step (value-added time)"),
+    ("WT  Wait Time","Queue / idle time before the next step begins"),
+    ("LT  Lead Time","Total elapsed time = PT + WT"),
+    ("FE  Flow Efficiency","PT ÷ LT × 100 — industry avg ~38%"),
+    ("Bottleneck","Step where WT > PT and blocks downstream flow"),
+    ("Waste","Steps with no value-add — candidates for elimination"),
 ]
-for i, (color, status, pct, desc) in enumerate(statuses):
-    xb = 0.4 + i * 2.62
-    card(sl, xb, 2.7, 2.45, 2.2, bg=LIGHT_GRAY, border=color)
-    txt(sl, status, xb + 0.15, 2.82, 2.1, 0.38, size=13, bold=True, color=color)
-    txt(sl, pct, xb + 0.15, 3.22, 2.1, 0.55, size=26, bold=True, color=color)
-    txt(sl, desc, xb + 0.15, 3.80, 2.15, 0.45, size=9, color=MID_GRAY)
+for ri,(term,def_) in enumerate(vsm_defs):
+    y=CONTENT_TOP+0.45+ri*0.49
+    tb(sl,term,8.62,y,2.1,0.26,sz=9,bold=True,color=GREEN)
+    tb(sl,def_,8.62,y+0.26,4.25,0.24,sz=8.5,color=MID)
 
-# Initiatives
-txt(sl, "Strategic Initiatives:", 0.4, 5.1, 3.0, 0.3, size=10, bold=True, color=DARK)
-for i, init in enumerate(["Digital Transformation", "Operational Excellence", "Customer Experience", "Risk Modernization", "Platform Migration"]):
-    col = i % 3
-    row = i // 3
-    box(sl, 0.4 + col * 2.62, 5.45 + row * 0.42, 2.45, 0.35,
-        fill_color=LIGHT_GRAY, line_color=INDIGO, line_width=Pt(0.5))
-    txt(sl, init, 0.55 + col * 2.62, 5.5 + row * 0.42, 2.2, 0.28,
-        size=9, color=INDIGO)
-
-# Stats
-rm_stats = [("234", "Roadmap Items"), ("~40%", "Approval Rate"), ("Q1-Q4", "2026 Quarters"), ("5", "Initiatives"), ("RICE", "Scoring")]
-xst = 0.4
-for val, lbl in rm_stats:
-    col = AMBER
-    metric_box(sl, val, lbl, xst, 6.15, 1.55, 0.85, val_color=col)
-    xst += 1.6
+stats=[("78","Capabilities with VSM"),("100%","Coverage",GREEN),
+       ("78","Mermaid Diagrams"),("~35%","Avg Flow Efficiency",AMBER),("60%+","Avg Waste",RED)]
+xst=0.35
+for item in stats:
+    v,l=item[0],item[1]; c=item[2] if len(item)>2 else INDIGO
+    metric(sl,v,l,xst,CONTENT_TOP+3.6,1.58,0.85,vcol=c,bg=LGRAY,border=c)
+    xst+=1.65
 
 footer(sl)
-
+talking_points(sl,[
+    "CLICK: VSM → set Level = L1 → show flow efficiency bars across all 3 products — LoanFlow is the bottleneck at ~28%",
+    "CLICK: L2 → select 'AI Underwriting' → point to the Mermaid diagram auto-rendered below the metrics table",
+    "Average Flow Efficiency ~35% means 65% of lead time is WASTE — this is the transformation opportunity",
+    "CLICK: Classification panel (right side of L2) → show Bottleneck steps highlighted in orange, Waste in red",
+    "100% VSM coverage = all 78 capabilities have metrics — previous session had only 1 per product (3 total)",
+    "CLICK: Capability Comparison Chart button → shows side-by-side FE bars for all capabilities in the segment",
+])
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SLIDE 11 — Context Hub
+# SLIDE 8  Future State
 # ══════════════════════════════════════════════════════════════════════════════
-sl = add_slide()
-header_bar(sl, "Step 6  ·  Context Hub",
-           "Knowledge base powering RAG for all 18 agents — 5 categories, hybrid BM25 + vector search",
-           accent=CYAN)
+sl = new_slide()
+header(sl,"Step 3  ·  Future State Vision","Benchmark-grounded projections with automation mix and 3-band metrics",accent=PURPLE)
 
-tps = [
-    "Context Hub is the brain behind every agent — documents uploaded here are injected into every agent's RAG context automatically",
-    "5 categories create a structured knowledge taxonomy: CURRENT_STATE, VSM_BENCHMARKS, TRANSFORMATION_CASE_STUDIES, ARCHITECTURE_STANDARDS, AGENT_OUTPUT",
-    "Hybrid search: BM25 (keyword) + semantic vector similarity — tested to outperform pure vector search by 15–20% recall",
-    "Fetch URL: paste any public URL (GitHub repo, Confluence page, API docs) and the system chunks + embeds automatically",
-    "21 context documents seeded across all 5 categories, all INDEXED — KB accuracy score ~70%",
-    "AGENT_OUTPUT category is auto-populated: every time Discovery/VSM/Future State agents complete, their output is saved as a context doc",
-    "Each category has a description in the UI — guide stakeholders on what to upload for each",
+features=[
+    (PURPLE,"Automation Mix Breakdown","Per-product breakdown across: RPA · AI/ML · Agent-Based · Conversational Analytics\nShows technology investment split as stacked bar chart"),
+    (AMBER, "Projected Metrics — 3 Bands","Conservative / Expected / Optimistic projections grounded in uploaded VSM benchmark docs\n'Benchmark-grounded' badge confirms projections are data-backed, not AI estimates"),
+    (CYAN,  "Capability Modernisation Roadmap","RICE scoring per capability: Reach × Impact × Confidence ÷ Effort\nBusiness impact · Complexity rating · Recommended tech stack · Auto-feeds Product Roadmap agent"),
 ]
-talking_points_panel(sl, tps)
+for i,(col,title,desc) in enumerate(features):
+    yb=CONTENT_TOP+i*1.2
+    card(sl,0.35,yb,12.6,1.05,bg=LGRAY,border=col)
+    rect(sl,0.35,yb,0.22,1.05,fill=col)
+    tb(sl,title,0.68,yb+0.1,4.0,0.38,sz=13,bold=True,color=col)
+    tb(sl,desc,0.68,yb+0.52,11.7,0.45,sz=10,color=DARK)
+    if i<2: tb(sl,"▼",6.4,yb+1.08,0.5,0.2,sz=11,color=col,align=PP_ALIGN.CENTER)
 
-# Categories
-cats = [
-    (INDIGO, "📄  CURRENT_STATE",            "BRDs, process maps, existing architecture docs\nGives agents baseline context about current state"),
-    (GREEN,  "📊  VSM_BENCHMARKS",           "Industry KPI benchmarks, timing data, FE benchmarks\nGrounds Future State projections in real data"),
-    (RGBColor(0xA8,0x55,0xF7), "📚  TRANSFORMATION_CASE_STUDIES", "Published transformation case studies, whitepapers\nProvides precedent patterns for recommendations"),
-    (AMBER,  "🏗  ARCHITECTURE_STANDARDS",   "Enterprise architecture standards, tech constraints\nGuides architecture agent recommendations"),
-    (CYAN,   "🤖  AGENT_OUTPUT",             "Auto-populated after each agent run (Discovery, VSM, Future State)\nEnables agents to learn from their own prior outputs"),
-]
-yb = 1.3
-for color, title, desc in cats:
-    card(sl, 0.4, yb, 7.85, 0.92, bg=LIGHT_GRAY, border=color)
-    box(sl, 0.4, yb, 0.12, 0.92, fill_color=color)
-    txt(sl, title, 0.65, yb + 0.08, 3.5, 0.35, size=11, bold=True, color=color)
-    txt(sl, desc, 0.65, yb + 0.46, 7.1, 0.38, size=9.5, color=DARK)
-    yb += 1.02
+rect(sl,0.35,CONTENT_TOP+3.65,12.6,0.78,fill=AMBERBG,line=AMBER,lw=Pt(0.6))
+tb(sl,"💡  What 'Benchmark-Grounded' means:",0.55,CONTENT_TOP+3.72,5.0,0.3,sz=10,bold=True,color=AMBER)
+tb(sl,"When VSM_BENCHMARKS or TRANSFORMATION_CASE_STUDIES documents are uploaded to Context Hub, the Future State agent reads them and derives "
+   "projections from real industry data rather than generic multipliers. A 'Benchmark-grounded' badge appears in the header confirming this.",
+   0.55,CONTENT_TOP+4.0,12.2,0.36,sz=9.5,color=DARK)
 
-# Stats
-kb_stats = [("21", "Context Docs"), ("5", "Categories Covered"), ("100%", "Indexed"), ("~70%", "KB Accuracy"), ("BM25+V", "Hybrid Search")]
-xst = 0.4
-for val, lbl in kb_stats:
-    col = CYAN if lbl not in ("~70%",) else GREEN
-    metric_box(sl, val, lbl, xst, 6.15, 1.55, 0.85, val_color=col)
-    xst += 1.6
+stats=[("9","Products with Vision"),("3","Metric Bands"),("✓","Benchmark Docs",GREEN),("234","Roadmap Items"),("~70%","FS Accuracy",GREEN)]
+xst=0.35
+for item in stats:
+    v,l=item[0],item[1]; c=item[2] if len(item)>2 else PURPLE
+    metric(sl,v,l,xst,CONTENT_TOP+4.5,2.3,0.85,vcol=c,bg=LGRAY,border=c)
+    xst+=2.42
 
 footer(sl)
-
+talking_points(sl,[
+    "CLICK: Future State → note the 'Benchmark-grounded' badge in the header — hover it to see which docs are grounding the projections",
+    "CLICK: Automation Mix chart → show LoanFlow Digital: 30% RPA, 40% AI/ML, 20% Agent-Based — ask 'does this match your current roadmap thinking?'",
+    "CLICK: Expand any product → Projected Metrics table → point to Conservative/Expected/Optimistic bands with specific FE targets",
+    "The Conservative band assumes 20% of benchmark improvement, Expected = 50%, Optimistic = 80% — conservative is the planning number",
+    "CLICK: Capability Modernisation list → sort by RICE score → top item is the highest ROI transformation candidate",
+    "Future State output auto-saves as an AGENT_OUTPUT context doc — the Roadmap agent reads it to generate roadmap items",
+])
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SLIDE 12 — Accuracy Dashboard
+# SLIDE 9  Risk & Compliance
 # ══════════════════════════════════════════════════════════════════════════════
-sl = add_slide()
-header_bar(sl, "Step 7  ·  Accuracy Dashboard",
-           "Per-module AI output accuracy with composite scoring and live action plan",
-           accent=AMBER)
+sl = new_slide()
+header(sl,"Step 4  ·  Risk & Compliance","Hard risk gates · SHA-256 tamper-proof audit trail · regulatory framework mapping",accent=RED)
 
-tps = [
-    "Accuracy badges appear on EVERY module page header — click any badge to jump to this dashboard",
-    "Discovery ~85%: high because avg confidence is 85% + 100% source triangulation + 7 unique evidence source types",
-    "VSM ~72%: strong because 100% coverage (all 78 capabilities have metrics) + rich Mermaid diagrams",
-    "Risk ~35%: lower because only 4 risk assessments vs 26 capabilities — run the Risk agent to push this to 80%+",
-    "The Action Plan auto-generates 4–8 prioritised steps — each item links directly to the module that needs work",
-    "Composite formula: Discovery 20% + VSM 18% + Future State 15% + KB 15% + Risk 12% + Product Transformation 12% + Architecture 8%",
-    "Show the Knowledge Base module card expanded — it shows which of the 5 categories are missing docs",
+sev=[
+    (RED,  "CRITICAL  ≥ 8.0","BLOCKS transformation gate. Mitigation must be completed and approved before any capability moves to production."),
+    (AMBER,"HIGH  6.0 – 7.9","Transformation allowed with an approved mitigation plan. Plan tracked as mandatory pre-condition in roadmap."),
+    (INDIGO,"MEDIUM  4.0 – 5.9","Advisory. Mitigation recommended but does not block the transformation gate."),
+    (GREEN,"LOW  < 4.0","Informational. Logged in audit trail. No action required before transformation proceeds."),
 ]
-talking_points_panel(sl, tps)
+for i,(col,label,desc) in enumerate(sev):
+    yb=CONTENT_TOP+i*0.88
+    card(sl,0.35,yb,8.0,0.78,bg=LGRAY,border=col)
+    rect(sl,0.35,yb,0.22,0.78,fill=col)
+    tb(sl,label,0.68,yb+0.1,2.2,0.3,sz=11,bold=True,color=col)
+    tb(sl,desc,0.68,yb+0.44,7.5,0.3,sz=9.5,color=DARK)
 
-# Accuracy bars
-bars = [
-    ("Discovery",               85, GREEN),
-    ("Lean VSM",                72, GREEN),
-    ("Future State Vision",     70, GREEN),
-    ("Knowledge Base / RAG",    70, GREEN),
-    ("Product Transformation",  55, AMBER),
-    ("Risk & Compliance",       35, AMBER),
-    ("Architecture",            40, AMBER),
-    ("Composite (weighted)",    68, INDIGO),
+# Frameworks
+rect(sl,8.55,CONTENT_TOP,4.45,3.52,fill=REDBG,line=RED,lw=Pt(0.6))
+rect(sl,8.55,CONTENT_TOP,4.45,0.36,fill=RED)
+tb(sl,"REGULATORY FRAMEWORKS",8.72,CONTENT_TOP+0.06,4.1,0.24,sz=9,bold=True,color=WHITE)
+orgs_fw=[
+    ("US Bank","FINRA · SEC · SOX · FDIC · BSA/AML"),
+    ("Telstra Health","HL7 FHIR · HIPAA · GDPR · TGA"),
+    ("ING Bank","Basel III · MiFID II · SOLVENCY II · DORA"),
+    ("SHA-256 Audit","Each entry hashes prev — tamper-proof chain"),
+    ("Risk Agent","Auto-generates mitigation plan per risk item"),
+    ("Gate Logic","Score ≥ 8.0 → transitionBlocked = TRUE in DB"),
 ]
-x0 = 0.4
-y0 = 1.35
-for i, (label, pct, color) in enumerate(bars):
-    is_composite = "Composite" in label
-    if is_composite:
-        y0 += 0.18
-        box(sl, x0, y0, 8.1, 0.02, fill_color=LIGHT_GRAY)
-        y0 += 0.1
-    add_accuracy_bar(sl, label, pct, x0, y0, w=4.2, bar_color=color)
-    if is_composite:
-        txt(sl, "Weighted composite across 7 core modules", x0, y0 + 0.28, 4.2, 0.22,
-            size=8.5, color=MID_GRAY, italic=True)
-    y0 += 0.52 if not is_composite else 0.58
+for ri,(org,fws) in enumerate(orgs_fw):
+    y=CONTENT_TOP+0.44+ri*0.49
+    tb(sl,org,8.72,y,1.9,0.26,sz=9,bold=True,color=RED)
+    tb(sl,fws,8.72,y+0.26,4.25,0.24,sz=8.5,color=MID)
+
+# Audit trail explanation
+rect(sl,0.35,CONTENT_TOP+3.55,8.0,0.88,fill=REDBG,line=RED,lw=Pt(0.5))
+tb(sl,"🔒  SHA-256 Chained Audit Trail",0.55,CONTENT_TOP+3.62,4.0,0.3,sz=10,bold=True,color=RED)
+tb(sl,"Each log entry stores: Action · Actor · Payload · PayloadHash(previous+current). "
+   "If any entry is altered, the hash chain breaks — immediately detectable. Required for SOX/FDIC/GDPR compliance.",
+   0.55,CONTENT_TOP+3.92,7.7,0.44,sz=9.5,color=DARK)
+
+stats=[("12","Risk Assessments"),("18","Compliance Maps"),("3","Frameworks / Org"),("4","Audit Entries / Org"),("SHA-256","Chain Type")]
+xst=0.35
+for v,l in stats:
+    c=RED if "Risk" in l else INDIGO
+    metric(sl,v,l,xst,CONTENT_TOP+4.5,2.3,0.85,vcol=c,bg=LGRAY,border=c)
+    xst+=2.42
+
+footer(sl)
+talking_points(sl,[
+    "CLICK: Risk & Compliance → point to the CRITICAL risk item — show the 'Transition BLOCKED' badge on the capability card",
+    "Explain the gate: until this risk score drops below 8.0, no transformation agent will move that capability forward",
+    "CLICK: Compliance Mappings tab → show FDIC + SOX requirements mapped to specific capabilities with evidence links",
+    "CLICK: Audit Log tab → scroll through SHA-256 chained entries — point to 'previousHash' field linking entries together",
+    "Ask the audience: 'For your most regulated product, what frameworks would you need mapped?' — write it down for follow-up",
+    "The Risk agent takes ~60 seconds to run — offer to run it live during Q&A to show real-time risk identification",
+])
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SLIDE 10  Accuracy Dashboard
+# ══════════════════════════════════════════════════════════════════════════════
+sl = new_slide()
+header(sl,"Step 5  ·  Accuracy Dashboard","Per-module AI output quality with composite scoring and live action plan",accent=AMBER)
+
+# Bars (left column)
+bars=[
+    ("Discovery",                 85, GREEN),
+    ("Lean VSM",                  72, GREEN),
+    ("Future State Vision",       70, GREEN),
+    ("Knowledge Base / RAG",      70, GREEN),
+    ("Product Transformation",    55, AMBER),
+    ("Risk & Compliance",         35, AMBER),
+    ("Architecture",              40, AMBER),
+]
+tb(sl,"MODULE SCORES",0.35,CONTENT_TOP+0.05,4.0,0.28,sz=9,bold=True,color=MID)
+for i,(label,pct,col) in enumerate(bars):
+    acc_bar(sl,label,pct,0.35,CONTENT_TOP+0.40+i*0.52,w=5.0,bar_col=col)
+
+# Composite
+rect(sl,0.35,CONTENT_TOP+4.10,5.3,0.6,fill=INDBG,line=INDIGO,lw=Pt(0.75))
+tb(sl,"COMPOSITE SCORE  (weighted average)",0.55,CONTENT_TOP+4.18,4.5,0.26,sz=9,bold=True,color=INDIGO)
+acc_bar(sl,"Discovery×20% + VSM×18% + FutureState×15% + KB×15% + Risk×12% + PT×12% + Arch×8%",
+        68,0.35,CONTENT_TOP+4.5,w=5.3,bar_col=INDIGO)
 
 # Scoring legend
-box(sl, 4.9, 1.35, 3.35, 2.5, fill_color=LIGHT_GRAY,
-    line_color=INDIGO, line_width=Pt(0.5))
-txt(sl, "Score Legend", 5.05, 1.45, 3.0, 0.32, size=10, bold=True, color=DARK)
-legend = [(GREEN, "80–100%", "Excellent"), (GREEN, "65–79%", "Good"),
-          (AMBER, "45–64%", "Fair"), (RED, "0–44%", "Needs Work")]
-for i, (color, rng, lbl) in enumerate(legend):
-    y = 1.85 + i * 0.48
-    box(sl, 5.05, y, 0.18, 0.22, fill_color=color)
-    txt(sl, f"{rng}  —  {lbl}", 5.3, y, 2.8, 0.28, size=10, color=DARK)
+rect(sl,5.9,CONTENT_TOP,3.0,2.0,fill=LGRAY,line=INDIGO,lw=Pt(0.5))
+rect(sl,5.9,CONTENT_TOP,3.0,0.36,fill=INDIGO)
+tb(sl,"SCORE LEGEND",6.08,CONTENT_TOP+0.07,2.7,0.24,sz=9,bold=True,color=WHITE)
+legend=[(GREEN,"80–100%","Excellent"),(GREEN,"65–79%","Good"),
+        (AMBER,"45–64%","Fair"),(RED,"0–44%","Needs Work")]
+for ri,(col,rng,lbl) in enumerate(legend):
+    y=CONTENT_TOP+0.46+ri*0.38
+    rect(sl,6.08,y,0.2,0.22,fill=col)
+    tb(sl,f"{rng}  —  {lbl}",6.36,y,2.4,0.28,sz=10,color=DARK)
+
+# Badge explanation
+rect(sl,5.9,CONTENT_TOP+2.15,3.0,1.38,fill=AMBERBG,line=AMBER,lw=Pt(0.5))
+rect(sl,5.9,CONTENT_TOP+2.15,3.0,0.35,fill=AMBER)
+tb(sl,"ACCURACY BADGES",6.08,CONTENT_TOP+2.21,2.7,0.24,sz=9,bold=True,color=WHITE)
+tb(sl,"Every module page header shows a live accuracy badge (green/amber/red). "
+   "Click any badge to jump directly to this Accuracy Dashboard.",
+   6.08,CONTENT_TOP+2.58,2.78,0.82,sz=9,color=DARK)
 
 # Action plan
-box(sl, 4.9, 4.0, 3.35, 2.6, fill_color=AMBER_BG,
-    line_color=AMBER, line_width=Pt(0.75))
-box(sl, 4.9, 4.0, 3.35, 0.38, fill_color=AMBER)
-txt(sl, "⚡  TOP ACTIONS TO IMPROVE", 5.05, 4.06, 3.1, 0.26,
-    size=9, bold=True, color=WHITE)
-actions = [
-    "Run Risk Agent → push Risk score 35%→80%+",
-    "Upload docs for missing KB categories",
-    "Add enrichment sources (OpenAPI + DB schema)",
-    "Run Architecture agent to improve arch score",
+rect(sl,9.15,CONTENT_TOP,4.1,4.68,fill=AMBERBG,line=AMBER,lw=Pt(0.75))
+rect(sl,9.15,CONTENT_TOP,4.1,0.38,fill=AMBER)
+tb(sl,"⚡  TOP IMPROVEMENT ACTIONS",9.33,CONTENT_TOP+0.07,3.8,0.26,sz=9,bold=True,color=WHITE)
+actions=[
+    ("HIGH","Run Risk Agent → push Risk 35% → 80%+",
+     "Risk agent covers all 26 capabilities vs current 4"),
+    ("HIGH","Upload VSM Benchmarks to Context Hub",
+     "Unlocks benchmark-grounded Future State projections"),
+    ("HIGH","Add OpenAPI + DB schema as enrichment sources",
+     "Each source adds 15–20% confidence per entity"),
+    ("MED", "Run Architecture agent",
+     "Architecture module currently at 0% — one run → ~60%"),
+    ("MED", "Upload ARCHITECTURE_STANDARDS docs",
+     "KB category missing → adds 8pts to KB composite"),
 ]
-cy = 4.46
-for a in actions:
-    txt(sl, f"→  {a}", 5.05, cy, 3.1, 0.42, size=9, color=DARK)
-    cy += 0.50
+cy=CONTENT_TOP+0.50
+for pri,title,sub in actions:
+    col=RED if pri=="HIGH" else AMBER
+    rect(sl,9.25,cy,0.42,0.24,fill=col)
+    tb(sl,pri,9.25,cy,0.42,0.24,sz=7.5,bold=True,color=WHITE,align=PP_ALIGN.CENTER)
+    tb(sl,title,9.74,cy,3.4,0.26,sz=9,bold=True,color=DARK)
+    tb(sl,sub,9.74,cy+0.28,3.4,0.24,sz=8.5,color=MID,italic=True)
+    cy+=0.75
 
 footer(sl)
-
+talking_points(sl,[
+    "CLICK: Accuracy from sidebar → point to the composite score first: ~68% 'Good' — then explain why each module scored as it did",
+    "Discovery 85% = high confidence avg (85%) + 100% source triangulation + 7 unique evidence types",
+    "Risk 35% = only 4 assessments mapped vs 26 capabilities — 'run the Risk agent now and watch this jump to 80%+'",
+    "CLICK: Expand the Discovery module card → show source distribution breakdown (GitHub, OpenAPI, DB, tests etc.)",
+    "CLICK: Scroll to Action Plan → show the 5 prioritised improvement steps — each one links to the relevant module",
+    "The badges on every page header make accuracy visible at all times — analysts never have to wonder about data quality",
+])
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SLIDE 13 — Live Entry Demo
+# SLIDE 11  Live Entry Demo
 # ══════════════════════════════════════════════════════════════════════════════
-sl = add_slide()
-header_bar(sl, "Step 8  ·  Live Entry Demo",
-           "Create a new org and watch AI agents populate data from scratch in real-time",
-           accent=CYAN)
+sl = new_slide()
+header(sl,"Step 6  ·  Live Entry Demo (Optional)","Create a new org and watch AI agents populate data from scratch",accent=CYAN)
 
-tps = [
-    "Login as live@transformhub.ai — this user has no pre-seeded data, so the dashboard starts empty",
-    "Create a new org with a real company name and industry type — the more specific, the better the AI output",
-    "Use stripe/stripe-node or plaid/plaid-python as demo repos — they're public, well-structured, and have clear API boundaries",
-    "Pass 1 typically takes 25–40 seconds to stream — show the streaming output panel while it runs",
-    "After Pass 1 review, run Pass 2 immediately — capabilities will appear on the left panel as each batch completes",
-    "After all 3 passes are approved, navigate to VSM and run the Lean VSM agent — takes ~30 seconds",
-    "Show the Accuracy page at the end — composite goes from 0% to ~45% in a single agent cycle",
+steps=[
+    (CYAN,  "1","Login as Live User","live@transformhub.ai  /  live1234","Dashboard empty — no pre-seeded data, blank slate"),
+    (CYAN,  "2","Create Organisation","Organizations → + New Organization","Enter company name, industry type, business segments"),
+    (CYAN,  "3","Run Discovery — Pass 1","Discovery → Paste GitHub URL → Analyze","Recommended: github.com/stripe/stripe-node (public, well-structured)"),
+    (CYAN,  "4","Review Pass 1","Products stream in → Edit inline → Approve","Human review gate — edit product names to match your terminology"),
+    (GREEN, "5","Run Pass 2 + 3","Capabilities then functionalities auto-run","Each entity gets confidence score + evidence sources"),
+    (GREEN, "6","Run Lean VSM Agent","VSM page → Run Lean VSM","~30s — flow metrics + Mermaid diagrams generated for all caps"),
+    (INDIGO,"7","Check Accuracy Page","Accuracy from sidebar","Watch composite rise from 0% → ~45% after first agent cycle"),
 ]
-talking_points_panel(sl, tps)
+for i,(col,num,action,detail,tip) in enumerate(steps):
+    c=i%2; r=i//2
+    xb=0.35+c*6.55; yb=CONTENT_TOP+r*0.9
+    if i==6: xb=0.35  # last item full width
+    w=6.3 if i<6 else 12.8
+    card(sl,xb,yb,w,0.78,bg=LGRAY,border=col)
+    step_badge(sl,num,xb+0.1,yb+0.21,color=col,sz=0.34)
+    tb(sl,action,xb+0.6,yb+0.06,3.2,0.3,sz=11,bold=True,color=col)
+    tb(sl,detail,xb+0.6,yb+0.38,3.0,0.28,sz=9.5,color=DARK)
+    tb(sl,f"💡 {tip}",xb+(w/2),yb+0.06,w/2-0.2,0.62,sz=9,color=MID,italic=True)
 
-# Step flow
-steps_live = [
-    (CYAN,   "1", "Login",           "live@transformhub.ai  /  live1234", "Navigate to http://localhost:3000"),
-    (CYAN,   "2", "Create Org",      "Organizations → + New Organization", "Name: [Company], Industry: [Type], Add business segments"),
-    (CYAN,   "3", "Run Discovery",   "Discovery → Paste GitHub URL → Analyze", "Recommended: github.com/stripe/stripe-node"),
-    (CYAN,   "4", "Review Pass 1",   "Products appear → Edit/Delete inline → Approve", "Human review gate — this is where you add commentary"),
-    (CYAN,   "5", "Pass 2 + 3",      "Run automatically after approval", "Capabilities and functionalities populate with confidence scores"),
-    (GREEN,  "6", "Run VSM Agent",   "VSM page → Run Lean VSM", "Flow metrics and Mermaid diagrams generated (~30s)"),
-    (INDIGO, "7", "Check Accuracy",  "Accuracy page → see composite score", "Watch scores rise from 0% to live values"),
-]
-for i, (color, num, action, detail, tip) in enumerate(steps_live):
-    col = i % 2
-    row = i // 2
-    xb = 0.4 + col * 4.1
-    yb = 1.35 + row * 1.4
-    if i == 6:  # last item spans both cols if odd
-        xb = 0.4
-        card(sl, xb, yb, 8.2, 1.18, bg=GREEN_BG, border=GREEN)
-    else:
-        card(sl, xb, yb, 3.85, 1.18, bg=LIGHT_GRAY, border=color)
-    step_badge(sl, num, xb + 0.1, yb + 0.38, color=color)
-    txt(sl, action, xb + 0.6, yb + 0.08, 3.1, 0.38, size=11, bold=True, color=color)
-    txt(sl, detail, xb + 0.6, yb + 0.48, 3.1, 0.35, size=10, color=DARK)
-    txt(sl, tip, xb + 0.6, yb + 0.82, 3.1, 0.3, size=9, color=MID_GRAY, italic=True)
+# Good repos
+rect(sl,0.35,CONTENT_TOP+3.62,12.8,0.78,fill=CYANBG,line=CYAN,lw=Pt(0.6))
+tb(sl,"RECOMMENDED DEMO REPOS  (all public):",0.55,CONTENT_TOP+3.70,4.0,0.26,sz=9,bold=True,color=CYAN)
+repos=[("github.com/stripe/stripe-node","Payments — clear API, well-documented, multi-capability"),
+       ("github.com/plaid/plaid-python","Fintech — financial data, strong compliance signals"),
+       ("github.com/twilio/twilio-python","Communications — multi-product, good for discovery")]
+for ri,(repo,why) in enumerate(repos):
+    tb(sl,f"→  {repo}",0.55+ri*4.3,CONTENT_TOP+4.02,3.5,0.26,sz=9.5,bold=True,color=DARK)
+    tb(sl,why,0.55+ri*4.3,CONTENT_TOP+4.26,3.5,0.22,sz=8.5,color=MID)
 
 footer(sl)
-
+talking_points(sl,[
+    "Login as live@transformhub.ai — point out the empty dashboard: 'No data — we're going to fill this with AI agents in real-time'",
+    "Create the org first: use a company name the audience knows or respects — makes the output immediately relatable",
+    "Paste stripe/stripe-node GitHub URL — it's public, well-structured, and Discovery returns clean results in ~30 seconds",
+    "During Pass 1 streaming — narrate what's happening: 'The agent is reading the repo structure, identifying product boundaries...'",
+    "After Pass 1 approval, note the green confidence badges: 'These are evidence-based, not guesses — each product is backed by 3–4 source types'",
+    "Show the Accuracy page at the very end: composite jumps from 0% to ~45% after one Discovery + VSM cycle — real-time quality scoring",
+])
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SLIDE 14 — Business Value & Key Messages
+# SLIDE 12  Business Value
 # ══════════════════════════════════════════════════════════════════════════════
-sl = add_slide()
-header_bar(sl, "Business Value",
-           "Key messages for senior leadership — why TransformHub matters")
+sl = new_slide()
+header(sl,"Business Value","Why TransformHub matters for enterprise transformation programmes")
 
-tps = [
-    "Traditional transformation programs take 6–12 months to baseline current state. TransformHub does it in minutes with multi-pass discovery",
-    "The 8-source evidence triangulation means confidence scores are evidence-based, not AI guesswork — auditors love this",
-    "The platform replaces 6+ separate tools: process mining, risk management, roadmap planning, architecture review, compliance tracking, knowledge management",
-    "Human-in-the-loop at every stage: agents propose, humans approve. No black-box AI — every output is reviewable and editable",
-    "Benchmark-grounded future state means ROI projections are tied to real industry data, not vendor-supplied estimates",
-    "Multi-tenancy means different teams or clients can use the same platform with zero data cross-contamination",
+pillars=[
+    (INDIGO,"⏱","Speed","Hours, Not Months",
+     "Multi-pass AI discovery maps an enterprise product portfolio in under 10 minutes.\n"
+     "Traditional baselining takes 6–12 months of manual workshops and analyst time."),
+    (GREEN, "🎯","Accuracy","Evidence-Based Confidence",
+     "8 evidence source triangulation. 78–97% confidence per entity.\n"
+     "Human-in-the-loop review gates at every step — no black-box AI."),
+    (AMBER, "💰","Cost Reduction","One Platform, Not Six",
+     "Replaces: process mining, risk management, roadmap planning,\n"
+     "compliance tracking, architecture review, and knowledge management tools."),
+    (CYAN,  "🔒","Compliance","Audit-Ready by Design",
+     "SHA-256 chained immutable audit trail.\n"
+     "SOX, FDIC, GDPR, HIPAA, Basel III, MiFID II framework coverage built in."),
 ]
-talking_points_panel(sl, tps)
-
-# Value pillars
-pillars = [
-    (INDIGO, "⏱", "Speed", "Hours, not months", "Multi-pass AI discovery maps an enterprise product portfolio in under 10 minutes vs 6–12 months of manual baselining"),
-    (GREEN,  "🎯", "Accuracy", "Evidence-based confidence", "8 evidence source triangulation. 78–97% confidence per entity. Human-in-the-loop review gates at every step"),
-    (AMBER,  "💰", "Cost Reduction", "Replaces 6+ tools", "Consolidates process mining, risk mgmt, roadmap planning, compliance tracking, architecture review into one platform"),
-    (CYAN,   "🔒", "Compliance", "Audit-ready by design", "SHA-256 chained immutable audit trail. SOX, FDIC, GDPR, HIPAA, Basel III framework coverage out of the box"),
-]
-for i, (color, icon, title, subtitle, body) in enumerate(pillars):
-    xb = 0.4 + (i % 2) * 4.1
-    yb = 1.3 + (i // 2) * 2.55
-    card(sl, xb, yb, 3.85, 2.2, bg=LIGHT_GRAY, border=color)
-    box(sl, xb, yb, 3.85, 0.1, fill_color=color)
-    txt(sl, icon, xb + 0.15, yb + 0.2, 0.5, 0.45, size=20)
-    txt(sl, title, xb + 0.7, yb + 0.22, 2.7, 0.38, size=14, bold=True, color=color)
-    txt(sl, subtitle, xb + 0.7, yb + 0.62, 2.7, 0.32, size=10, bold=True, color=DARK)
-    txt(sl, body, xb + 0.15, yb + 1.02, 3.55, 0.98, size=9.5, color=MID_GRAY)
+for i,(col,icon,title,subtitle,body) in enumerate(pillars):
+    c=i%2; r=i//2
+    xb=0.35+c*6.55; yb=CONTENT_TOP+r*2.0
+    card(sl,xb,yb,6.3,1.82,bg=LGRAY,border=col)
+    rect(sl,xb,yb,6.3,0.1,fill=col)
+    tb(sl,icon,xb+0.15,yb+0.18,0.55,0.45,sz=22)
+    tb(sl,title,xb+0.78,yb+0.18,2.5,0.38,sz=14,bold=True,color=col)
+    tb(sl,subtitle,xb+0.78,yb+0.58,5.3,0.3,sz=10.5,bold=True,color=DARK)
+    tb(sl,body,xb+0.15,yb+0.96,5.95,0.74,sz=9.5,color=MID)
 
 footer(sl)
-
+talking_points(sl,[
+    "SPEED: A typical transformation programme spends 30–40% of its budget just on current-state baselining — TransformHub eliminates this",
+    "ACCURACY: Every entity has a confidence score and source list — when an auditor asks 'how do you know this capability exists?', show them the 4 evidence sources",
+    "COST: A conservative estimate: replacing 6 tools at £50k/year each = £300k/year saved, plus the analyst headcount previously doing manual baselining",
+    "COMPLIANCE: SHA-256 chaining means the audit trail is legally defensible — every action is timestamped, hashed, and linked to the previous entry",
+    "The Human-in-the-Loop design is deliberate: AI proposes, humans approve. This is critical for regulated industries where AI alone cannot make decisions",
+    "All 4 pillars are visible in the platform — offer to show any one of them live in Q&A (accuracy → Discovery page, compliance → Risk page, etc.)",
+])
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SLIDE 15 — Pre-Demo Checklist
+# SLIDE 13  Pre-Demo Checklist
 # ══════════════════════════════════════════════════════════════════════════════
-sl = add_slide()
-header_bar(sl, "Pre-Demo Checklist",
-           "Verify all services are running before the meeting starts")
+sl = new_slide()
+header(sl,"Pre-Demo Checklist","Run this 15 minutes before the meeting — not 1 minute before")
 
-tps = [
-    "Run this checklist 15 minutes before the demo — not 1 minute before",
-    "Port 3000 may be occupied by Product Coach (another project). Kill it with: kill $(lsof -ti:3000)",
-    "The health endpoint at localhost:8000/api/v1/health should return {status: healthy} — if it shows database disconnected, restart Postgres.app",
-    "Redis unavailable is normal and expected — the system falls back to in-memory, no impact on demo",
-    "If US Bank doesn't auto-select, clear the org cookie: localStorage.removeItem('currentOrgId') in browser console",
-    "Have a backup plan: if live demo fails, switch to the pre-filled path immediately — demo@transformhub.ai always works",
-    "Have the demo guide open in a separate browser tab (TransformHub/docs/demo-guide.html)",
+# Services checklist
+card(sl,0.35,CONTENT_TOP,5.85,3.75,bg=LGRAY,border=GREEN)
+rect(sl,0.35,CONTENT_TOP,5.85,0.36,fill=GREEN)
+tb(sl,"✓  SERVICES RUNNING",0.55,CONTENT_TOP+0.07,5.4,0.24,sz=10,bold=True,color=WHITE)
+service_checks=[
+    ("Next.js frontend","http://localhost:3000  →  redirects to /login"),
+    ("FastAPI backend","curl localhost:8000/api/v1/health  →  {status: healthy}"),
+    ("PostgreSQL","Postgres.app in menu bar shows green dot"),
+    ("Demo data seeded","3 orgs in switcher: US Bank · Telstra Health · ING Bank"),
+    ("Accuracy page loads","Composite score visible (~68%) for US Bank"),
 ]
-talking_points_panel(sl, tps)
+for ri,(item,detail) in enumerate(service_checks):
+    y=CONTENT_TOP+0.48+ri*0.62
+    rect(sl,0.5,y+0.05,0.22,0.22,fill=WHITE,line=GREEN,lw=Pt(0.75))
+    tb(sl,item,0.82,y,2.3,0.28,sz=10,bold=True,color=DARK)
+    tb(sl,detail,0.82,y+0.30,4.9,0.26,sz=8.5,color=MID,italic=True)
 
-# Checklist
-checks_left = [
-    ("Services", [
-        ("Next.js frontend running", "http://localhost:3000  →  should redirect to /login"),
-        ("FastAPI backend running", "curl localhost:8000/api/v1/health  →  {status: healthy}"),
-        ("PostgreSQL running",      "Postgres.app icon in menu bar shows green"),
-        ("Demo data seeded",        "3 orgs visible in org switcher: US Bank, Telstra Health, ING Bank"),
-    ]),
-    ("Browser", [
-        ("Open incognito window",   "Prevents cached session from wrong account interfering"),
-        ("Zoom to 90%",             "Ensures all columns visible without horizontal scroll"),
-        ("Pre-logged in as demo",   "demo@transformhub.ai / demo1234 — US Bank should auto-load"),
-        ("KPIs visible",            "Dashboard shows 9 products, 26 capabilities, 79 functionalities"),
-    ]),
+# Browser checklist
+card(sl,6.45,CONTENT_TOP,6.5,3.75,bg=LGRAY,border=INDIGO)
+rect(sl,6.45,CONTENT_TOP,6.5,0.36,fill=INDIGO)
+tb(sl,"✓  BROWSER SETUP",6.65,CONTENT_TOP+0.07,6.1,0.24,sz=10,bold=True,color=WHITE)
+browser_checks=[
+    ("Open incognito window","Prevents cached session from a different account causing issues"),
+    ("Zoom to 90%","Ensures all table columns are fully visible without horizontal scroll"),
+    ("Pre-logged in as demo","demo@transformhub.ai / demo1234  —  US Bank loaded"),
+    ("KPI cards populated","Dashboard shows: 9 products, 26 capabilities, 79 functionalities"),
+    ("This guide open","Open demo-guide.html in a separate browser tab for reference"),
 ]
-
-for ci, (section, items) in enumerate(checks_left):
-    xb = 0.4 + ci * 4.1
-    card(sl, xb, 1.3, 3.85, 5.4, bg=LIGHT_GRAY, border=INDIGO)
-    box(sl, xb, 1.3, 3.85, 0.38, fill_color=INDIGO)
-    txt(sl, f"✓  {section.upper()}", xb + 0.15, 1.36, 3.55, 0.28,
-        size=10, bold=True, color=WHITE)
-    cy = 1.78
-    for item, detail in items:
-        box(sl, xb + 0.15, cy, 0.22, 0.22,
-            fill_color=WHITE, line_color=INDIGO, line_width=Pt(0.75))
-        txt(sl, item, xb + 0.48, cy, 3.2, 0.26, size=10, bold=True, color=DARK)
-        txt(sl, detail, xb + 0.48, cy + 0.26, 3.2, 0.3, size=8.5, color=MID_GRAY)
-        cy += 0.72
+for ri,(item,detail) in enumerate(browser_checks):
+    y=CONTENT_TOP+0.48+ri*0.62
+    rect(sl,6.6,y+0.05,0.22,0.22,fill=WHITE,line=INDIGO,lw=Pt(0.75))
+    tb(sl,item,6.92,y,2.8,0.28,sz=10,bold=True,color=DARK)
+    tb(sl,detail,6.92,y+0.30,5.8,0.26,sz=8.5,color=MID,italic=True)
 
 # Start commands
-card(sl, 8.7, 1.3, 4.2, 3.5, bg=RGBColor(0x0F,0x17,0x2A))
-box(sl, 8.7, 1.3, 4.2, 0.38, fill_color=DARK)
-txt(sl, "⚡  START COMMANDS", 8.9, 1.36, 3.8, 0.28,
-    size=10, bold=True, color=WHITE)
-cmd_lines = [
-    "# Terminal 1 — Agent Backend",
-    "cd TransformHub/agent-service",
-    "source venv/bin/activate",
-    "uvicorn app.main:app --reload --port 8000",
-    "",
-    "# Terminal 2 — Next.js Frontend",
-    "cd TransformHub/nextjs-app",
-    "npm run dev",
-    "",
-    "# Re-seed demo data if needed",
-    "cd nextjs-app",
-    "npx tsx prisma/seed.ts",
-]
-cy = 1.76
-for line in cmd_lines:
-    color = RGBColor(0x64,0x74,0x8B) if line.startswith("#") else (
-            WHITE if line else WHITE)
-    txt(sl, line, 8.9, cy, 3.9, 0.26, size=8.5, color=color,
-        italic=line.startswith("#"))
-    cy += 0.28
+rect(sl,0.35,CONTENT_TOP+3.88,6.35,0.88,fill=RGBColor(0x0F,0x17,0x2A))
+tb(sl,"# Terminal 1 — Backend",0.55,CONTENT_TOP+3.96,5.9,0.22,sz=8.5,color=MID,italic=True)
+tb(sl,"cd TransformHub/agent-service && source venv/bin/activate",
+   0.55,CONTENT_TOP+4.18,5.9,0.22,sz=9,color=CYAN)
+tb(sl,"uvicorn app.main:app --reload --port 8000",
+   0.55,CONTENT_TOP+4.40,5.9,0.22,sz=9,color=CYAN)
+tb(sl,"# Terminal 2 — Frontend   cd TransformHub/nextjs-app && npm run dev",
+   0.55,CONTENT_TOP+4.62,5.9,0.22,sz=8.5,color=WHITE)
 
-# Troubleshooting
-card(sl, 8.7, 5.0, 4.2, 1.7, bg=AMBER_BG, border=AMBER)
-box(sl, 8.7, 5.0, 4.2, 0.35, fill_color=AMBER)
-txt(sl, "⚠  QUICK FIXES", 8.9, 5.05, 3.8, 0.26, size=10, bold=True, color=WHITE)
-fixes = [
-    ("Wrong org loads:", "localStorage.removeItem('currentOrgId')"),
-    ("Port 3000 busy:", "kill $(lsof -ti:3000)  then restart Next.js"),
-    ("No data showing:", "npx tsx prisma/seed.ts"),
-]
-cy = 5.45
-for problem, fix in fixes:
-    txt(sl, problem, 8.9, cy, 1.4, 0.26, size=9, bold=True, color=AMBER)
-    txt(sl, fix, 10.35, cy, 2.45, 0.26, size=9, color=DARK)
-    cy += 0.38
+# Quick fixes
+rect(sl,6.95,CONTENT_TOP+3.88,5.95,0.88,fill=AMBERBG,line=AMBER,lw=Pt(0.6))
+tb(sl,"⚠  QUICK FIXES",7.15,CONTENT_TOP+3.93,5.5,0.24,sz=9,bold=True,color=AMBER)
+fixes=[("Wrong org:","localStorage.removeItem('currentOrgId') in console"),
+       ("Port 3000 busy:","kill $(lsof -ti:3000)  then restart Next.js"),
+       ("No data:","cd nextjs-app && npx tsx prisma/seed.ts")]
+for ri,(prob,fix) in enumerate(fixes):
+    y=CONTENT_TOP+4.22+ri*0.24
+    tb(sl,prob,7.15,y,1.5,0.22,sz=9,bold=True,color=AMBER)
+    tb(sl,fix,8.7,y,3.95,0.22,sz=9,color=DARK)
 
 footer(sl)
-
+talking_points(sl,[
+    "The most common demo failure: wrong org auto-loads. Fix: localStorage.removeItem('currentOrgId') in browser console, then refresh",
+    "Port 3000 is shared with Product Coach (another project) — if it's running, kill it first: kill $(lsof -ti:3000)",
+    "Run the health check BEFORE the meeting: curl localhost:8000/api/v1/health — if database shows disconnected, restart Postgres.app",
+    "Redis unavailable in the health response is NORMAL — the platform uses in-memory fallback, no impact on demo",
+    "Have a backup slide ready: if the live demo fails mid-run, switch to the pre-filled US Bank org immediately",
+    "Pre-position the browser on the Dashboard with US Bank loaded — start the meeting already in the app, not on the login page",
+])
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SLIDE 16 — Closing / Thank You
+# SLIDE 14  Closing
 # ══════════════════════════════════════════════════════════════════════════════
-sl = add_slide()
+sl = new_slide()
+rect(sl,0,0,0.22,7.5,fill=INDIGO)
 
-# Left colour band
-box(sl, 0, 0, 0.18, 7.5, fill_color=INDIGO)
+tb(sl,"Ready to Transform.",0.5,0.65,10.5,0.95,sz=42,bold=True,color=INDIGO)
+tb(sl,"AI-powered enterprise transformation — from discovery to delivery.",
+   0.5,1.62,10.5,0.42,sz=14,color=MID,italic=True)
 
-# Title
-txt(sl, "Ready to Transform.", 0.55, 1.3, 9.0, 1.0,
-    size=44, bold=True, color=INDIGO)
-txt(sl, "AI-powered enterprise transformation from discovery to delivery.", 0.55, 2.3, 9.0, 0.5,
-    size=16, color=MID_GRAY, italic=True)
+summary=[("3","Enterprise\nDemo Orgs",INDIGO),("8","Core\nModules",CYAN),
+         ("18","AI\nAgents",GREEN),("78","Capabilities\nMapped",INDIGO),
+         ("245+","Functionalities",INDIGO),("~68%","Composite\nAccuracy",GREEN)]
+for i,(v,l,c) in enumerate(summary):
+    metric(sl,v,l,0.5+i*2.12,2.35,1.88,1.0,vcol=c,bg=LGRAY,border=c)
 
-# Summary stats
-summary = [
-    ("3",    "Enterprise Orgs"),
-    ("8",    "Core Modules"),
-    ("18",   "AI Agents"),
-    ("78",   "Capabilities Mapped"),
-    ("245+", "Functionalities"),
-    ("~68%", "Composite Accuracy"),
-]
-xst = 0.55
-for val, lbl in summary:
-    col = GREEN if "%" in val else INDIGO
-    metric_box(sl, val, lbl, xst, 3.1, 1.9, 0.95, val_color=col)
-    xst += 1.95
+rect(sl,0.5,3.6,12.3,1.55,fill=INDBG,line=INDIGO,lw=Pt(0.75))
+tb(sl,"🌐  http://localhost:3000",0.7,3.70,5.0,0.34,sz=13,bold=True,color=INDIGO)
+for i,(label,cred) in enumerate([
+    ("Pre-Filled Demo:","demo@transformhub.ai  /  demo1234   — Use for leadership demos — 3 enterprise orgs, full data"),
+    ("Live Entry Demo:", "live@transformhub.ai  /  live1234   — Use for technical walkthroughs — blank org, run agents live"),
+    ("Admin:","admin@transformhub.ai  /  demo1234"),
+]):
+    tb(sl,label,0.7,3.73+(i+1)*0.33,2.5,0.3,sz=9.5,bold=True,color=MID)
+    tb(sl,cred,3.3,3.73+(i+1)*0.33,9.3,0.3,sz=9.5,color=DARK)
 
-# Access block
-box(sl, 0.55, 4.4, 8.3, 1.65, fill_color=ACCENT_BG,
-    line_color=INDIGO, line_width=Pt(0.75))
-txt(sl, "🌐  http://localhost:3000", 0.8, 4.5, 4.0, 0.38,
-    size=13, bold=True, color=INDIGO)
-txt(sl, "demo@transformhub.ai  /  demo1234     (pre-filled — use this for leadership demos)",
-    0.8, 4.9, 7.7, 0.3, size=10, color=DARK)
-txt(sl, "live@transformhub.ai  /  live1234     (blank — use this for live entry walk-throughs)",
-    0.8, 5.22, 7.7, 0.3, size=10, color=DARK)
-txt(sl, "admin@transformhub.ai  /  demo1234",
-    0.8, 5.54, 7.7, 0.3, size=10, color=MID_GRAY)
-
-# Stack badges
-badges = ["Next.js 15 + TypeScript", "FastAPI + LangGraph", "PostgreSQL 18 + pgvector",
-          "18 AI Agents", "BM25 + Vector RAG", "SHA-256 Audit Trail"]
-xst = 0.55
-for badge in badges:
-    bw = len(badge) * 0.085 + 0.25
-    box(sl, xst, 6.25, bw, 0.38,
-        fill_color=ACCENT_BG, line_color=INDIGO, line_width=Pt(0.5))
-    txt(sl, badge, xst + 0.1, 6.3, bw - 0.15, 0.28, size=9, color=INDIGO)
-    xst += bw + 0.1
+badges=["Next.js 15 + TypeScript","FastAPI + LangGraph","PostgreSQL 18 + pgvector",
+        "18 AI Agents","BM25 + Vector RAG","SHA-256 Audit Trail","Multi-Tenant"]
+x=0.5
+for b in badges:
+    w=len(b)*0.092+0.28
+    rect(sl,x,5.42,w,0.38,fill=INDBG,line=INDIGO,lw=Pt(0.4))
+    tb(sl,b,x+0.1,5.47,w-0.15,0.26,sz=9,color=INDIGO)
+    x+=w+0.1
 
 footer(sl)
-
+talking_points(sl,[
+    "Close with: 'Which of your products would you want us to map first in Discovery?'",
+    "If budget conversations come up: ROI is hours-to-discovery vs months of analyst workshops — the payback is in the first sprint",
+    "Next steps: provide their GitHub repo URL or website URL and we can have a Discovery output ready in 24 hours",
+    "The platform is live at localhost:3000 — leave the browser open so they can explore after the meeting",
+    "Offer to re-seed with their company name and industry so the demo feels personalised next time",
+])
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Save
 # ══════════════════════════════════════════════════════════════════════════════
-out = "/Users/125066/projects/TransformHub/docs/TransformHub_Demo_Deck.pptx"
+out="/Users/125066/projects/TransformHub/docs/TransformHub_Demo_Deck.pptx"
 prs.save(out)
 print(f"✅  Saved: {out}")
-print(f"   Slides: {len(prs.slides)}")
+print(f"   {len(prs.slides)} slides")

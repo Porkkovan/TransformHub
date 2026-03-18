@@ -4,6 +4,7 @@ import path from "path";
 import prisma from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-auth";
 import { auditLog } from "@/lib/audit-logger";
+import { detectPromptInjection } from "@/lib/api-validation";
 
 const ALLOWED_TYPES = [".pdf", ".csv", ".json", ".txt", ".md", ".xlsx", ".xls"];
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
@@ -64,6 +65,20 @@ export async function POST(request: NextRequest) {
     const filePath = path.join(uploadDir, fileName);
 
     const arrayBuffer = await file.arrayBuffer();
+
+    // Scan text-readable files for adversarial prompt injection before storing.
+    // Binary formats (PDF, xlsx) are checked later during the text-extraction pipeline.
+    const textReadableExts = new Set([".txt", ".md", ".json", ".csv"]);
+    if (textReadableExts.has(ext)) {
+      const textSample = Buffer.from(arrayBuffer).toString("utf-8").slice(0, 50_000);
+      if (detectPromptInjection(textSample)) {
+        return NextResponse.json(
+          { error: "Document contains content that cannot be processed" },
+          { status: 400 }
+        );
+      }
+    }
+
     await fs.writeFile(filePath, Buffer.from(arrayBuffer));
 
     // Create database record

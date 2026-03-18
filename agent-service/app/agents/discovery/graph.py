@@ -409,11 +409,20 @@ async def extract_functionalities(state: AgentState) -> dict[str, Any]:
         f"Identify all discrete business functionalities for {org_description(org)}.\n"
         f"Codebase structure:\n{json.dumps(parsed, indent=2)}\n"
         f"{seed_ctx}\n{ctx}\n\n"
-        f"For each functionality, assign a confidence score (0.0-1.0) based on how well evidenced it is.\n"
-        f"Also list which evidence sources support it: url_analysis, openapi_spec, github_structure, "
-        f"github_tests, db_schema, context_document, integration_data, questionnaire.\n"
+        f"For each functionality, assign:\n"
+        f"- confidence (0.0-1.0): how well evidenced it is\n"
+        f"- sources: list of evidence types (url_analysis, openapi_spec, github_structure, "
+        f"github_tests, db_schema, context_document, integration_data, questionnaire)\n"
+        f"- estimatedCycleTimeMin (float): estimated hands-on processing time in minutes "
+        f"(e.g. form submit = 2 min, document parse = 8 min, manual review = 45 min)\n"
+        f"- estimatedWaitTimeMin (float): typical time waiting in queue before this "
+        f"functionality is triggered (e.g. batch overnight = 480 min, real-time = 0 min)\n"
+        f"- automationPotential: 'high' (fully automatable via rules/ML), "
+        f"'medium' (partially automatable), or 'low' (requires human judgement)\n"
+        f"- manualTouchpoints (int): number of distinct human actions required (0 = fully automated)\n\n"
         f"Return a JSON array: "
-        f"[{{name, description, sourceFiles, confidence (0.0-1.0), sources: [source_name]}}]"
+        f"[{{name, description, sourceFiles, confidence (0.0-1.0), sources: [source_name], "
+        f"estimatedCycleTimeMin, estimatedWaitTimeMin, automationPotential, manualTouchpoints}}]"
     )
 
     try:
@@ -836,11 +845,20 @@ async def persist_results(state: AgentState) -> dict[str, Any]:
                         func_confidence = raw.get("confidence") or compute_confidence(raw.get("sources", ["url_analysis"]))
                         func_sources = raw.get("sources", ["url_analysis"])
                         await db_pool.execute(
-                            """INSERT INTO functionalities (id, digital_capability_id, name, description,
-                               source_files, confidence, sources, created_at, updated_at)
-                               VALUES ($1, $2, $3, $4, $5::text[], $6, $7::text[], NOW(), NOW())""",
+                            """INSERT INTO functionalities (
+                               id, digital_capability_id, name, description,
+                               source_files, confidence, sources,
+                               estimated_cycle_time_min, estimated_wait_time_min,
+                               automation_potential, manual_touchpoints,
+                               created_at, updated_at)
+                               VALUES ($1, $2, $3, $4, $5::text[], $6, $7::text[],
+                                       $8, $9, $10, $11, NOW(), NOW())""",
                             func_db_id, cap_db_id, raw["name"], raw.get("description", ""),
                             raw.get("sourceFiles", []), func_confidence, func_sources,
+                            raw.get("estimatedCycleTimeMin"),
+                            raw.get("estimatedWaitTimeMin"),
+                            raw.get("automationPotential"),
+                            raw.get("manualTouchpoints"),
                         )
 
             # Fallback capability if nothing generated
@@ -859,12 +877,21 @@ async def persist_results(state: AgentState) -> dict[str, Any]:
                         func_db_id = str(uuid.uuid4())
                         func_id_map[func["name"]] = func_db_id
                         await db_pool.execute(
-                            """INSERT INTO functionalities (id, digital_capability_id, name, description,
-                               source_files, confidence, sources, created_at, updated_at)
-                               VALUES ($1, $2, $3, $4, $5::text[], $6, $7::text[], NOW(), NOW())""",
+                            """INSERT INTO functionalities (
+                               id, digital_capability_id, name, description,
+                               source_files, confidence, sources,
+                               estimated_cycle_time_min, estimated_wait_time_min,
+                               automation_potential, manual_touchpoints,
+                               created_at, updated_at)
+                               VALUES ($1, $2, $3, $4, $5::text[], $6, $7::text[],
+                                       $8, $9, $10, $11, NOW(), NOW())""",
                             func_db_id, default_cap_id, func["name"], func.get("description", ""),
                             func.get("sourceFiles", []),
                             func.get("confidence", 0.35), func.get("sources", ["url_analysis"]),
+                            func.get("estimatedCycleTimeMin"),
+                            func.get("estimatedWaitTimeMin"),
+                            func.get("automationPotential"),
+                            func.get("manualTouchpoints"),
                         )
 
         # ── For pass 3: build cap_id_map from confirmed DB capabilities ───────
@@ -893,11 +920,20 @@ async def persist_results(state: AgentState) -> dict[str, Any]:
                     func_confidence = raw.get("confidence") or compute_confidence(raw.get("sources", ["url_analysis"]))
                     func_sources = raw.get("sources", ["url_analysis"])
                     await db_pool.execute(
-                        """INSERT INTO functionalities (id, digital_capability_id, name, description,
-                           source_files, confidence, sources, created_at, updated_at)
-                           VALUES ($1, $2, $3, $4, $5::text[], $6, $7::text[], NOW(), NOW())""",
+                        """INSERT INTO functionalities (
+                           id, digital_capability_id, name, description,
+                           source_files, confidence, sources,
+                           estimated_cycle_time_min, estimated_wait_time_min,
+                           automation_potential, manual_touchpoints,
+                           created_at, updated_at)
+                           VALUES ($1, $2, $3, $4, $5::text[], $6, $7::text[],
+                                   $8, $9, $10, $11, NOW(), NOW())""",
                         func_db_id, cap_db_id, raw["name"], raw.get("description", ""),
                         raw.get("sourceFiles", []), func_confidence, func_sources,
+                        raw.get("estimatedCycleTimeMin"),
+                        raw.get("estimatedWaitTimeMin"),
+                        raw.get("automationPotential"),
+                        raw.get("manualTouchpoints"),
                     )
 
         # ── Persona mappings (all passes) ────────────────────────────────────

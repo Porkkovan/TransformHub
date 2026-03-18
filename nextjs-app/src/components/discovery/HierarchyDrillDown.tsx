@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import MermaidRenderer from "@/components/vsm/MermaidRenderer";
 import {
@@ -127,13 +127,21 @@ export default function HierarchyDrillDown({ repositories, initialProductId }: H
   const [breadcrumb, setBreadcrumb] = useState<BreadcrumbEntry[]>([]);
   const [mermaidExpanded, setMermaidExpanded] = useState(true);
 
-  // When initialProductId is provided (e.g. coming from Products View "Explore →"),
-  // pre-navigate the drill-down to that product's capability level.
+  // Track which initialProductId we've already navigated to, so that a
+  // repositories refetch (e.g. from a background poll) doesn't reset the
+  // breadcrumb back to the capabilities level while the user has already
+  // drilled deeper into L3 functionalities.
+  const initializedProductIdRef = useRef<string | undefined>(undefined);
+
   useEffect(() => {
     if (!initialProductId) return;
+    // Only run the initialisation logic when the product being targeted changes,
+    // not on every repositories update.
+    if (initializedProductIdRef.current === initialProductId) return;
     for (const repo of repositories) {
       const product = repo.digitalProducts.find((p) => p.id === initialProductId);
       if (product) {
+        initializedProductIdRef.current = initialProductId;
         setBreadcrumb([
           { level: "repos", id: repo.id, label: repo.name },
           { level: "products", id: product.id, label: product.name },

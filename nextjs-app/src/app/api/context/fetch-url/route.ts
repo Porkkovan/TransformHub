@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/api-auth";
 import { chunkText } from "@/lib/text-extractor";
 import { generateEmbedding } from "@/lib/embeddings";
 import { auditLog } from "@/lib/audit-logger";
+import { detectPromptInjection } from "@/lib/api-validation";
 
 const VALID_CATEGORIES = [
   "CURRENT_STATE", "FUTURE_STATE", "COMPETITOR", "TECH_TREND",
@@ -119,6 +120,15 @@ export async function POST(request: NextRequest) {
 
     // Cap at 300 000 chars (generous limit for large reports)
     if (rawText.length > 300_000) rawText = rawText.slice(0, 300_000);
+
+    // Scan fetched content for adversarial prompt injection before storing.
+    // Sample the first 50k chars — sufficient to detect planted injection payloads.
+    if (detectPromptInjection(rawText.slice(0, 50_000))) {
+      return NextResponse.json(
+        { error: "Fetched content contains patterns that cannot be processed" },
+        { status: 422 }
+      );
+    }
 
     // ── Create ContextDocument record ─────────────────────────────────────────
     const fileName = parsedUrl.hostname + parsedUrl.pathname.replace(/\//g, "_").slice(0, 80);

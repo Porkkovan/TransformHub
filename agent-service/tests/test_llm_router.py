@@ -14,6 +14,24 @@ from app.services.llm_config import DEFAULT_MODEL, MODEL_CONFIGS
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_anthropic_mock(response_text: str = "Claude response text"):
+    """Build a mock Anthropic AsyncAnthropic client that returns *response_text*."""
+    mock_message = MagicMock()
+    mock_message.content = [MagicMock(text=response_text)]
+
+    mock_messages = MagicMock()
+    mock_messages.create = AsyncMock(return_value=mock_message)
+
+    mock_client = MagicMock()
+    mock_client.messages = mock_messages
+    return mock_client
+
+
+# ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
@@ -26,10 +44,10 @@ def router():
 
 @pytest.fixture
 def mock_claude():
-    """Mock the claude_client singleton used by _call_anthropic."""
-    with patch("app.services.llm_router.claude_client") as mock:
-        mock.analyze = AsyncMock(return_value="Claude response text")
-        yield mock
+    """Mock the Anthropic AsyncAnthropic client used by _call_anthropic."""
+    mock_client = _make_anthropic_mock()
+    with patch("anthropic.AsyncAnthropic", return_value=mock_client):
+        yield mock_client
 
 
 @pytest.fixture
@@ -73,11 +91,11 @@ class TestAnalyzeRouting:
         result = await router.analyze("Explain microservices")
 
         assert result == "Claude response text"
-        mock_claude.analyze.assert_awaited_once()
+        mock_claude.messages.create.assert_awaited_once()
 
-        # Check the call was made with proper args
-        call_kwargs = mock_claude.analyze.call_args[1]
-        assert call_kwargs["prompt"] == "Explain microservices"
+        # Check the SDK call was made with proper args
+        call_kwargs = mock_claude.messages.create.call_args[1]
+        assert call_kwargs["messages"][0]["content"] == "Explain microservices"
         assert "system" in call_kwargs
         assert "max_tokens" in call_kwargs
 
@@ -88,7 +106,7 @@ class TestAnalyzeRouting:
             system="You are a testing assistant.",
         )
 
-        call_kwargs = mock_claude.analyze.call_args[1]
+        call_kwargs = mock_claude.messages.create.call_args[1]
         assert call_kwargs["system"] == "You are a testing assistant."
 
     @pytest.mark.asyncio
@@ -100,10 +118,10 @@ class TestAnalyzeRouting:
         )
 
         assert result == "Claude response text"
-        mock_claude.analyze.assert_awaited_once()
+        mock_claude.messages.create.assert_awaited_once()
 
         # max_tokens should be capped by the model config
-        call_kwargs = mock_claude.analyze.call_args[1]
+        call_kwargs = mock_claude.messages.create.call_args[1]
         haiku_max = MODEL_CONFIGS["claude-haiku-3.5"]["max_tokens"]
         assert call_kwargs["max_tokens"] <= haiku_max
 
@@ -116,7 +134,7 @@ class TestAnalyzeRouting:
             model_preference="claude-opus-4",
         )
 
-        call_kwargs = mock_claude.analyze.call_args[1]
+        call_kwargs = mock_claude.messages.create.call_args[1]
         opus_max = MODEL_CONFIGS["claude-opus-4"]["max_tokens"]
         assert call_kwargs["max_tokens"] == opus_max
 
@@ -132,9 +150,9 @@ class TestAnalyzeStructured:
         result = await router.analyze_structured("Return JSON analysis")
 
         assert result == "Claude response text"
-        mock_claude.analyze.assert_awaited_once()
+        mock_claude.messages.create.assert_awaited_once()
 
-        call_kwargs = mock_claude.analyze.call_args[1]
+        call_kwargs = mock_claude.messages.create.call_args[1]
         assert "JSON" in call_kwargs["system"]
 
 
@@ -146,12 +164,11 @@ class TestAnalyzeStructured:
 class TestUsageTracking:
     @pytest.mark.asyncio
     async def test_tracks_usage_after_successful_call(self, router, mock_claude, mock_env_no_openai):
-        await router.analyze("Count my tokens")
+        await router.analyze("Count my tokens", model_preference="claude-sonnet-4-5")
 
         usage = router.get_usage()
-        # The default model should have an entry
-        assert DEFAULT_MODEL in usage
-        entry = usage[DEFAULT_MODEL]
+        assert "claude-sonnet-4-5" in usage
+        entry = usage["claude-sonnet-4-5"]
         assert entry["requests"] == 1
         assert entry["input_tokens"] > 0
         assert entry["output_tokens"] > 0
@@ -159,11 +176,11 @@ class TestUsageTracking:
 
     @pytest.mark.asyncio
     async def test_accumulates_usage_across_calls(self, router, mock_claude, mock_env_no_openai):
-        await router.analyze("First call")
-        await router.analyze("Second call")
+        await router.analyze("First call",  model_preference="claude-sonnet-4-5")
+        await router.analyze("Second call", model_preference="claude-sonnet-4-5")
 
         usage = router.get_usage()
-        assert usage[DEFAULT_MODEL]["requests"] == 2
+        assert usage["claude-sonnet-4-5"]["requests"] == 2
 
     @pytest.mark.asyncio
     async def test_tracks_per_model_usage(self, router, mock_claude, mock_env_no_openai):
@@ -179,7 +196,9 @@ class TestUsageTracking:
     @pytest.mark.asyncio
     async def test_cost_differs_between_models(self, router, mock_claude, mock_env_no_openai):
         """More expensive models should track higher costs for same content."""
-        mock_claude.analyze = AsyncMock(return_value="Same response for both")
+        mock_claude.messages.create = AsyncMock(
+            return_value=MagicMock(content=[MagicMock(text="Same response for both")])
+        )
 
         await router.analyze("Same prompt", model_preference="claude-haiku-3.5")
         await router.analyze("Same prompt", model_preference="claude-opus-4")
@@ -213,12 +232,13 @@ class TestFallback:
     async def test_falls_back_to_openai_when_primary_fails(self, router):
         """When the primary model fails and OPENAI_API_KEY is set,
         it should attempt gpt-4o as fallback."""
+        mock_client = _make_anthropic_mock()
+        mock_client.messages.create = AsyncMock(side_effect=Exception("Claude down"))
+
         with (
-            patch("app.services.llm_router.claude_client") as mock_claude,
+            patch("anthropic.AsyncAnthropic", return_value=mock_client),
             patch.dict(os.environ, {"OPENAI_API_KEY": "test-openai-key"}),
         ):
-            mock_claude.analyze = AsyncMock(side_effect=Exception("Claude down"))
-
             # Mock the OpenAI call
             with patch.object(router, "_call_openai", new_callable=AsyncMock) as mock_openai:
                 mock_openai.return_value = "OpenAI fallback response"
@@ -231,23 +251,26 @@ class TestFallback:
     @pytest.mark.asyncio
     async def test_falls_back_to_default_claude_when_openai_not_available(self, router):
         """When non-default model fails and no OPENAI_API_KEY, fall back to default Claude."""
+        call_count = 0
+
+        async def side_effect_create(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise Exception("Haiku is down")
+            msg = MagicMock()
+            msg.content = [MagicMock(text="Default Claude response")]
+            return msg
+
+        mock_client = MagicMock()
+        mock_client.messages = MagicMock()
+        mock_client.messages.create = AsyncMock(side_effect=side_effect_create)
+
         with (
-            patch("app.services.llm_router.claude_client") as mock_claude,
+            patch("anthropic.AsyncAnthropic", return_value=mock_client),
             patch.dict(os.environ, {}, clear=False),
         ):
             os.environ.pop("OPENAI_API_KEY", None)
-
-            # First call (haiku) fails, second call (default/sonnet) succeeds
-            call_count = 0
-
-            async def side_effect_analyze(**kwargs):
-                nonlocal call_count
-                call_count += 1
-                if call_count == 1:
-                    raise Exception("Haiku is down")
-                return "Default Claude response"
-
-            mock_claude.analyze = AsyncMock(side_effect=side_effect_analyze)
 
             result = await router.analyze(
                 "Test",
@@ -258,14 +281,20 @@ class TestFallback:
 
     @pytest.mark.asyncio
     async def test_raises_when_all_providers_fail(self, router):
-        """When the primary model IS the default and all fallbacks fail,
-        a RuntimeError should be raised."""
+        """When no API keys are set and Claude mock fails, RuntimeError is raised."""
+        mock_client = _make_anthropic_mock()
+        mock_client.messages.create = AsyncMock(side_effect=Exception("All broken"))
+
         with (
-            patch("app.services.llm_router.claude_client") as mock_claude,
-            patch.dict(os.environ, {}, clear=False),
+            patch("anthropic.AsyncAnthropic", return_value=mock_client),
+            patch.dict(
+                os.environ,
+                {},
+                clear=True,  # clear ALL env vars so no provider key is set
+            ),
         ):
-            os.environ.pop("OPENAI_API_KEY", None)
-            mock_claude.analyze = AsyncMock(side_effect=Exception("All broken"))
+            # Set only the keys needed by the app config
+            os.environ["DATABASE_URL"] = "postgresql://test:test@localhost:5432/testdb"
 
             with pytest.raises(RuntimeError, match="All LLM providers failed"):
                 await router.analyze("This will fail")
@@ -281,9 +310,8 @@ class TestEdgeCases:
     async def test_raises_on_unknown_model(self, router, mock_env_no_openai):
         """Requesting an unknown model_preference should raise KeyError
         from get_model_config, then fallback should also fail."""
-        with patch("app.services.llm_router.claude_client") as mock_claude:
-            mock_claude.analyze = AsyncMock(return_value="ok")
-
+        mock_client = _make_anthropic_mock()
+        with patch("anthropic.AsyncAnthropic", return_value=mock_client):
             # Unknown model triggers KeyError in _dispatch -> falls to _fallback
             # _fallback tries default Claude model which should succeed
             result = await router.analyze(
@@ -291,27 +319,31 @@ class TestEdgeCases:
                 model_preference="nonexistent-model",
             )
             # Should have fallen back to default claude model
-            assert result == "ok"
+            assert result == "Claude response text"
 
     @pytest.mark.asyncio
     async def test_analyze_structured_also_has_fallback(self, router):
         """analyze_structured should also fall back on failure."""
+        call_count = 0
+
+        async def side_effect_create(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise Exception("First try fails")
+            msg = MagicMock()
+            msg.content = [MagicMock(text='{"result": "fallback"}')]
+            return msg
+
+        mock_client = MagicMock()
+        mock_client.messages = MagicMock()
+        mock_client.messages.create = AsyncMock(side_effect=side_effect_create)
+
         with (
-            patch("app.services.llm_router.claude_client") as mock_claude,
+            patch("anthropic.AsyncAnthropic", return_value=mock_client),
             patch.dict(os.environ, {}, clear=False),
         ):
             os.environ.pop("OPENAI_API_KEY", None)
-
-            call_count = 0
-
-            async def side_effect_analyze(**kwargs):
-                nonlocal call_count
-                call_count += 1
-                if call_count == 1:
-                    raise Exception("First try fails")
-                return '{"result": "fallback"}'
-
-            mock_claude.analyze = AsyncMock(side_effect=side_effect_analyze)
 
             result = await router.analyze_structured(
                 "Get JSON",

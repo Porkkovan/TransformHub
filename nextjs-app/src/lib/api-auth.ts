@@ -51,7 +51,7 @@ export async function requireAuth(): Promise<AuthUser> {
     id: user.id,
     email: user.email,
     name: user.name ?? null,
-    role: (user.role as Role) || "VIEWER",
+    role: (user.role as Role) || "ANALYST",
     organizationId: user.organizationId ?? null,
   };
 }

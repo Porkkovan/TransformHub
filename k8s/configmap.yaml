@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: transformhub-config
+  namespace: transformhub
+data:
+  # Agent service config
+  REDIS_URL: "redis://redis-svc:6379/0"
+  LOG_LEVEL: "INFO"
+  WORKERS: "4"
+  # Next.js config
+  AGENT_SERVICE_URL: "http://agent-service-svc:8000"
+  NEXTAUTH_URL: "https://app.transformhub.io"
+  NODE_ENV: "production"
+  # Database
+  DB_POOL_MIN: "2"
+  DB_POOL_MAX: "20"
+  # Read replica (set DATABASE_READ_URL in secret to enable)
+  DATABASE_READ_URL: ""

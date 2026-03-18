@@ -9,6 +9,15 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/1")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
 
 
+@pytest.fixture(autouse=True)
+def reset_circuit_breakers():
+    """Reset all circuit breakers between tests to prevent state leakage."""
+    import app.services.circuit_breaker as cb_module
+    cb_module._breakers.clear()
+    yield
+    cb_module._breakers.clear()
+
+
 @pytest.fixture(scope="session")
 def event_loop():
     loop = asyncio.new_event_loop()

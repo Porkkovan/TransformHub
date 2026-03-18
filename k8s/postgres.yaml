@@ -1,0 +1,78 @@
+---
+# Headless service for stable DNS
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-svc
+  namespace: transformhub
+  labels:
+    app: postgres
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: transformhub
+spec:
+  serviceName: postgres-svc
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg16
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: transformhub
+            - name: POSTGRES_USER
+              value: transformhub
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: transformhub-secrets
+                  key: POSTGRES_PASSWORD
+                  optional: false
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2
+              memory: 4Gi
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "transformhub"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "transformhub"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 50Gi
